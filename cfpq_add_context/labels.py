@@ -26,8 +26,14 @@ OFFSET = 5
 def intersection_op (x:int, y:int) -> int:
     return (NOTHING - (x == y or (x & y == x and (y == SIGMA or y == SIGMA_WITHOUT_CONTEXTS or y == ALL_OPEN_CONTEXTS or y == SIGMA_WITHOUT_OPEN_CONTEXTS)))) & x
 
-BinaryOp.register_new("intersection_op", intersection_op)
-Monoid.register_new("labels_intersection", binary.intersection_op, identity=NOTHING)
+# def intersection_op (x: int, y: int) -> int:
+#     if (x == y):
+#         return x
+#     else:
+#         return 0
+
+BinaryOp.register_new("intersection_op", intersection_op, lazy=True)
+Monoid.register_new("labels_intersection", binary.intersection_op, identity=SIGMA, lazy=True)
 
 def mk_open_context_from_pass(x:int) -> int : 
     return NOTHING | ((2 * (x + 1) + 1) << 43)
@@ -87,16 +93,16 @@ def select_not_reversed_op(x,i,j,k):
     )
 
 
-SelectOp.register_new("select_alloc", select_alloc_op)
-SelectOp.register_new("select_alloc_r", select_alloc_r_op)
-SelectOp.register_new("select_assign", select_assign_op)
-SelectOp.register_new("select_assign_r", select_assign_r_op)
-SelectOp.register_new("select_load", select_load_op)
-SelectOp.register_new("select_store", select_store_op)
-SelectOp.register_new("select_load_r", select_load_r_op)
-SelectOp.register_new("select_store_r", select_store_r_op)
-SelectOp.register_new("select_pass_and_return", select_pass_and_return_op)
-SelectOp.register_new("select_not_reversed", select_not_reversed_op)
+SelectOp.register_new("select_alloc", select_alloc_op, lazy=True)
+SelectOp.register_new("select_alloc_r", select_alloc_r_op, lazy=True)
+SelectOp.register_new("select_assign", select_assign_op, lazy=True)
+SelectOp.register_new("select_assign_r", select_assign_r_op, lazy=True)
+SelectOp.register_new("select_load", select_load_op, lazy=True)
+SelectOp.register_new("select_store", select_store_op, lazy=True)
+SelectOp.register_new("select_load_r", select_load_r_op, lazy=True)
+SelectOp.register_new("select_store_r", select_store_r_op, lazy=True)
+SelectOp.register_new("select_pass_and_return", select_pass_and_return_op, lazy=True)
+SelectOp.register_new("select_not_reversed", select_not_reversed_op, lazy=True)
 
 def decode_load_op(x):
     return ((x & SIGMA_WITHOUT_CONTEXTS) - OFFSET) // 4
@@ -111,7 +117,7 @@ def decode_store_r_op(x):
     return ((x & SIGMA_WITHOUT_CONTEXTS) - OFFSET - 3) // 4
 
 
-UnaryOp.register_new("decode_load", decode_load_op)
-UnaryOp.register_new("decode_load_r", decode_load_r_op)
-UnaryOp.register_new("decode_store", decode_store_op)
-UnaryOp.register_new("decode_store_r", decode_store_r_op)
+UnaryOp.register_new("decode_load", decode_load_op, lazy=True)
+UnaryOp.register_new("decode_load_r", decode_load_r_op, lazy=True)
+UnaryOp.register_new("decode_store", decode_store_op, lazy=True)
+UnaryOp.register_new("decode_store_r", decode_store_r_op, lazy=True)
