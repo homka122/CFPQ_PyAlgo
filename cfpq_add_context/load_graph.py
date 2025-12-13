@@ -7,10 +7,10 @@ import cfpq_add_context.labels as labels
 from cfpq_add_context.utils import print_matrix_to_dot
 
 
-
-def load_graph(file_path, max_num_of_contexts = 30):
+def load_graph(file_path, max_num_of_contexts=30):
     nvertices = 0
     number_of_contexts = 0
+
     def get_edge_lbl(terminal):
         data_arr = terminal.split()
         _context = 0
@@ -25,17 +25,18 @@ def load_graph(file_path, max_num_of_contexts = 30):
         elif data_arr[0] == "alloc":
             return labels.mk_other(labels.ALLOC)
         elif "open" in data_arr[0]:
-            _context =  int(data_arr[0].split('_')[1]) % max_num_of_contexts
+            _context = int(data_arr[0].split("_")[1]) % max_num_of_contexts
             res = labels.mk_open_context_from_pass(_context)
 
             number_of_contexts = max(number_of_contexts, _context)
             return res
         elif "close" in data_arr[0]:
-            _context = int(data_arr[0].split('_')[1]) % max_num_of_contexts
+            _context = int(data_arr[0].split("_")[1]) % max_num_of_contexts
             res = labels.mk_close_context_from_ret(_context)
             number_of_contexts = max(number_of_contexts, _context)
             return res
-        else: print("ERROR:", terminal)
+        else:
+            print("ERROR:", terminal)
 
     def get_raw_edge(line):
         nonlocal nvertices
@@ -43,22 +44,21 @@ def load_graph(file_path, max_num_of_contexts = 30):
         _lbl = " ".join(data[2:])
         _from = int(data[0])
         _to = int(data[1])
-        
-        _max = max(_from,_to)
+
+        _max = max(_from, _to)
         nvertices = max(nvertices, _max)
 
         return (_from, _to, _lbl)
 
+    with open(file_path, "r") as file:
+        raw_edges = [get_raw_edge(line) for line in file if len(line.strip()) > 0 and not ("_r") in line]
 
-    with open (file_path,'r') as file:
-        raw_edges = [get_raw_edge(line) for line in file if len(line.strip()) > 0 and not("_r") in line]
-        
         nvertices = nvertices + 1
-        
+
         edges = {}
         assign_lbl = get_edge_lbl("assign")
-        for (v_from, v_to, terminal) in raw_edges:
-            if (v_from,v_to) in edges:
+        for v_from, v_to, terminal in raw_edges:
+            if (v_from, v_to) in edges:
                 v_new = nvertices
                 nvertices = nvertices + 1
                 if terminal.startswith("store"):
@@ -67,12 +67,11 @@ def load_graph(file_path, max_num_of_contexts = 30):
                 else:
                     edges[(v_from, v_new)] = assign_lbl
                     edges[(v_new, v_to)] = get_edge_lbl(terminal)
-            else: 
+            else:
                 edges[(v_from, v_to)] = get_edge_lbl(terminal)
-        
-        edges = [(i[0],i[1],edges[i]) for i in edges]
-        
+
+        edges = [(i[0], i[1], edges[i]) for i in edges]
+
         result = Matrix.from_edgelist(edges, dtype=UINT64, nrows=nvertices, ncols=nvertices, name="graph")
-        #print_matrix_to_dot(result, "graph.dot")
+        # print_matrix_to_dot(result, "graph.dot")
         return (result, (number_of_contexts + 1))
-            
