@@ -5,7 +5,7 @@ from cfpq_model.label_decomposed_graph import LabelDecomposedGraph
 def explode_indices(
     graph: LabelDecomposedGraph,
     grammar: CnfGrammarTemplate
-) -> (LabelDecomposedGraph, CnfGrammarTemplate):
+) -> tuple[LabelDecomposedGraph, CnfGrammarTemplate]:
     block_matrix_space = graph.block_matrix_space
     block_count = block_matrix_space.block_count
 

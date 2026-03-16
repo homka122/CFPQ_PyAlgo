@@ -110,6 +110,7 @@ def to_label_decomposed_graph(graph, automata_size, initial_graph_size):
     store_block_count = store_i.reduce_scalar("max").get(0) + 1
     load_block_count = load_i.reduce_scalar("max").get(0) + 1
     block_count = max(store_block_count, load_block_count)
+    print("BLOCK COUNT: ", block_count)
 
     boolean_decompose_load = indexed_to_boolean_decomposition(load_i, block_count)
     print("Boolean matrix for load nvals: ", boolean_decompose_load.nvals)
@@ -147,8 +148,8 @@ def to_label_decomposed_graph(graph, automata_size, initial_graph_size):
 
     # print_matrix_to_dot(assign_r,"assign_r.dot")
 
-    matrices: Dict[Symbol, Matrix] = {}
     matrices: dict[Symbol, Matrix] = {}
+
     matrices[Symbol("alloc")] = alloc
     matrices[Symbol("alloc_r")] = alloc_r
 

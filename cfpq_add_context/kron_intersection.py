@@ -17,6 +17,7 @@ from typing import List, Mapping
 import cfpq_add_context.labels
 from cfpq_add_context.utils import print_matrix_to_dot
 from cfpq_add_context.intersection import bfs
+from cfpq_model.cnf_grammar_template import CnfGrammarTemplate, Symbol 
 
 
 def kronecker_bool(graph, automata) -> Matrix:
@@ -598,47 +599,51 @@ class Box:
     def __init__(
         self,
         label: str,
-        start_state: str,
+        start_states: list[str],
         final_states: list[str],
     ):
         self.label = label
         self.states: set[str] = set()
         self.edges: list[tuple[str, str, str]] = []  # From, label, To
-        self.start_state = start_state
+        self.start_states = start_states
         self.final_states = final_states
 
     def to_dot_cluster(self) -> str:
         dot = f"subgraph cluster_{self.label} {{\n"
         dot += f'    label = "{self.label}";\n'
-        dot += f"    {self.start_state} [shape=circle, style=filled, fillcolor=green];\n"
+        for state in self.start_states:
+            dot += f"    {self.get_state_name(state)} [shape=circle, style=filled, fillcolor=green];\n"
         for state in self.final_states:
-            dot += f"    {state} [shape=doublecircle];\n"
+            dot += f"    {self.get_state_name(state)} [shape=doublecircle];\n"
         for edge in self.edges:
-            dot += f'    {edge[0]} -> {edge[2]} [label="{edge[1]}"];\n'
+            dot += f'    {self.get_state_name(edge[0])} -> {self.get_state_name(edge[2])} [label="{edge[1]}"];\n'
         dot += "}\n"
         return dot
-
+    
     def to_cfg(self) -> str:
         result = ""
         for frm, label, to in self.edges:
-            if frm == self.start_state:
-                frm = self.label
-            if to == self.start_state:
-                to = self.label
+            frm = self.get_state_name(frm)
+            to = self.get_state_name(to)
 
             result += f"{frm}\t{label}\t{to}\n"
 
         for state in self.final_states:
-            result += f"{state}\n"
+            result += f"{self.get_state_name(state)}\n"
 
         return result
+
+    def get_state_name(self, state: str) -> str:
+        if state in self.start_states:
+            return f"{self.label}_{state.split('_')[-1]}"
+        return state
 
     def __repr__(self) -> str:
         return (
             f"Box(label={self.label}, "
             f"states={self.states}, "
             f"edges={self.edges}, "
-            f"start_state={self.start_state}, "
+            f"start_state={self.start_states}, "
             f"final_states={self.final_states})"
         )
 
@@ -700,60 +705,56 @@ def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
         kron.append(kronecker_bool(rsm_matrices[i], automata_matrices[i]))
         # print_kron_to_dot(kron[i], f"kron_build{i}.dot", automata[0].ncols, graph[0].ncols, label=map[i])
 
-    boxesPointsTo: list[Box] = []
-    boxesFlowsTo: list[Box] = []
-    boxesAlias: list[Box] = []
+    boxPointsTo: Box = Box(label="PointsTo", start_states=[], final_states=["S_1_0", f"S_1_{automata_n - 1}"])
+    boxFlowsTo: Box = Box(label="FlowsTo", start_states=[], final_states=["S_3_0", f"S_3_{automata_n - 1}"])
+    boxAlias: Box = Box(label="Alias", start_states=[], final_states=["S_6_0", f"S_6_{automata_n - 1}"])
 
     for i in range(automata_n):
-        boxesPointsTo.append(Box(label=f"PointsTo_{i}", start_state=f"S{i}_0_{i}", final_states=[f"S{i}_1_0", f"S{i}_1_{automata_n - 1}"]))
-        boxesFlowsTo.append(Box(label=f"FlowsTo_{i}", start_state=f"S{i}_2_{i}", final_states=[f"S{i}_3_0", f"S{i}_3_{automata_n - 1}"]))
-        boxesAlias.append(Box(label=f"Alias_{i}", start_state=f"S{i}_4_{i}", final_states=[f"S{i}_6_0", f"S{i}_6_{automata_n - 1}"]))
+        boxPointsTo.start_states.append(f"S_0_{i}")
+        boxFlowsTo.start_states.append(f"S_2_{i}")
+        boxAlias.start_states.append(f"S_4_{i}")
 
     PointsTo_states = rsm.get_PointTo_states()
-    FlowsTo_states = rsm.get_PointTo_states()
-    Alias_states = rsm.get_PointTo_states()
+    FlowsTo_states = rsm.get_FlowsTo_states()
+    Alias_states = rsm.get_Alias_states()
     for i, label in enumerate(labels):
         print(f"label: {i}/{len(labels)}")
         edges = kron[i].to_edgelist()
         edgesZipped = list(zip(edges[0], edges[1]))
         result = ""
-        for boxNum in range(automata_n):
-            boxes: list[tuple[Box, Box, Box]] = list(zip(boxesPointsTo, boxesFlowsTo, boxesAlias))
 
-            for _edg, _ in edgesZipped:
-                box: Box
-                first_start_state = int(_edg[0] // automata_n)
-                first_end_state = int(_edg[1] // automata_n)
-                second_start_state = int(_edg[0] % automata_n)
-                second_end_state = int(_edg[1] % automata_n)
+        for _edg, _ in edgesZipped:
+            box: Box
+            first_start_state = int(_edg[0] // automata_n)
+            first_end_state = int(_edg[1] // automata_n)
+            second_start_state = int(_edg[0] % automata_n)
+            second_end_state = int(_edg[1] % automata_n)
 
-                newState0 = f"S{boxNum}_{first_start_state}_{second_start_state}"
-                newState1 = f"S{boxNum}_{first_end_state}_{second_end_state}"
-                if label in ["PointsTo", "FlowsTo", "Alias"]:
-                    newLabel = f"{label}_{second_start_state}"
-                else:
-                    newLabel = label
+            newState0 = f"S_{first_start_state}_{second_start_state}"
+            newState1 = f"S_{first_end_state}_{second_end_state}"
+            if label in ["PointsTo", "FlowsTo", "Alias"]:
+                newLabel = f"{label}_{second_start_state}"
+            else:
+                newLabel = label
 
-                if first_start_state in PointsTo_states:
-                    box = boxes[boxNum][0]
-                elif first_start_state in FlowsTo_states:
-                    box = boxes[boxNum][1]
-                elif first_start_state in Alias_states:
-                    box = boxes[boxNum][2]
+            if first_start_state in PointsTo_states:
+                box = boxPointsTo
+            elif first_start_state in FlowsTo_states:
+                box = boxFlowsTo
+            elif first_start_state in Alias_states:
+                box = boxAlias
 
-                box.states.add(newState0)
-                box.states.add(newState1)
-                box.edges.append((newState0, newLabel, newState1))
+            box.states.add(newState0)
+            box.states.add(newState1)
+            box.edges.append((newState0, newLabel, newState1))
 
     w_box("digraph g {")
-    for i in range(automata_n):
-        print(f"{i}/{automata_n}")
-        # w_box(boxesPointsTo[i].to_dot_cluster())
-        w_cfg(boxesPointsTo[i].to_cfg())
-        # w_box(boxesFlowsTo[i].to_dot_cluster())
-        w_cfg(boxesFlowsTo[i].to_cfg())
-        # w_box(boxesAlias[i].to_dot_cluster())
-        w_cfg(boxesAlias[i].to_cfg())
+    w_box(boxPointsTo.to_dot_cluster())
+    w_cfg(boxPointsTo.to_cfg())
+    w_box(boxFlowsTo.to_dot_cluster())
+    w_cfg(boxFlowsTo.to_cfg())
+    w_box(boxAlias.to_dot_cluster())
+    w_cfg(boxAlias.to_cfg())
     w_box("}")
     w_cfg("\nCount:\nPointsTo_0")
 
@@ -818,7 +819,7 @@ if False:
             for RSM_FIELDS_NUM in range(1, RSM_FIELDS_NUM_MAX + 1):
                 mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM)
 else:
-    AUTOMATA_CONTEXT_NUM = 2
-    AUTOMATA_DEPTH = 2
+    AUTOMATA_CONTEXT_NUM = 4
+    AUTOMATA_DEPTH = 4
     RSM_FIELDS_NUM = 414
     mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM)
