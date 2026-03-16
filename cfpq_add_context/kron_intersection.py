@@ -1,10 +1,14 @@
+import os
+import types
+from enum import auto
 import graphblas
 
 from graphblas.core.matrix import Matrix
 from graphblas.core.vector import Vector
 from graphblas.core.operator import Semiring, Monoid, SelectOp
 from graphblas.core.dtypes import UINT64, BOOL
-from graphblas import op, semiring, binary
+from graphblas import op, semiring, binary, select
+import graphblas.select
 import cfpq_add_context.gen_automata
 import time
 
@@ -15,7 +19,7 @@ from cfpq_add_context.utils import print_matrix_to_dot
 from cfpq_add_context.intersection import bfs
 
 
-def kronecker_bool(graph, automata):
+def kronecker_bool(graph, automata) -> Matrix:
     result = Matrix(
         graph.dtype,
         graph.nrows * automata.nrows,
@@ -53,7 +57,7 @@ def print_kron_to_dot(matrix, file, rsm_size, graph_size, map=None, label=None):
         print("}", file=f)
 
 
-def print_kron_to_str(matrix, graph_size, graph_finals, automata_finals, label=None, suffix=""):
+def print_kron_to_str(matrix: Matrix, graph_size: int, graph_finals: list[int], automata_finals: list[int], label=None, suffix=""):
     edges = matrix.to_edgelist()
     edges = zip(edges[0], edges[1])
     result = ""
@@ -79,29 +83,26 @@ def print_kron_to_str(matrix, graph_size, graph_finals, automata_finals, label=N
     return result
 
 
-def print_kron_to_CFG_rule(matrix, graph_size, graph_finals, automata_finals, label=None, suffix=""):
+def print_kron_to_CFG_rule(matrix: Matrix, graph_size: int, graph_finals: list[int], automata_finals: list[int], label=None, suffix="") -> str:
     edges = matrix.to_edgelist()
-    edges = zip(edges[0], edges[1])
+    edgesZipped = list(zip(edges[0], edges[1]))
     result = ""
-    for _edg, _lbl in edges:
+    for _edg, _lbl in edgesZipped:
         first_start_state = int(_edg[0] // graph_size)
         first_end_state = int(_edg[1] // graph_size)
         second_start_state = int(_edg[0] % graph_size)
         second_end_state = int(_edg[1] % graph_size)
 
-        new_edg_1 = f"(r{first_start_state}, g{second_start_state})" + suffix
-        new_edg_2 = f"(r{first_end_state}, g{second_end_state})" + suffix
-
         lbl = _lbl
-        if label != None:
+        if label is not None:
             lbl = label
 
         if lbl == "Alias":
-            result += f"S_{first_start_state}_{second_start_state} -> S_{12}_{second_start_state} S_{first_end_state}_{second_end_state}\n"
+            result += f"S_{first_start_state}_{second_start_state} -> S_{4}_{second_start_state} S_{first_end_state}_{second_end_state}\n"
         elif lbl == "PointsTo":
             result += f"S_{first_start_state}_{second_start_state} -> S_{0}_{second_start_state} S_{first_end_state}_{second_end_state}\n"
         elif lbl == "FlowsTo":
-            result += f"S_{first_start_state}_{second_start_state} -> S_{6}_{second_start_state} S_{first_end_state}_{second_end_state}\n"
+            result += f"S_{first_start_state}_{second_start_state} -> S_{2}_{second_start_state} S_{first_end_state}_{second_end_state}\n"
         else:
             result += f"S_{first_start_state}_{second_start_state} -> {lbl} S_{first_end_state}_{second_end_state}\n"
 
@@ -122,7 +123,7 @@ def dot_matrix(matrix, label, suffix=""):
     return result
 
 
-def dot_finite_state_machine(matrices, labels, start_node, final_nodes, suffix="", name="Finite state machine"):
+def dot_finite_state_machine(matrices: list[Matrix], labels: list[str], start_node: int, final_nodes: list[int], suffix="", name="Finite state machine"):
     result = ""
     result += "subgraph cluster1 {\n"
 
@@ -390,166 +391,434 @@ def get_automata_2_2(keys: List[str]):
     return (graph, graph_start, graph_finals)
 
 
-def mytest():
-    from collections import defaultdict
+class Automata:
+    def __init__(self):
+        self.open_context: list[tuple[int, int, int]] = []
+        self.closed_context: list[tuple[int, int, int]] = []
+        self.sigma: list[tuple[int, int]] = []
+        self.other_labels: list[str] = []
+        self.open_context_nums: set[int] = set()
+        self.closed_context_nums: set[int] = set()
 
-    # labels = ["a", "b", "S"]
-    # graph = {"a": [(0, 1), (1, 3)], "b": [(1, 2), (3, 4), (4, 2)], "S": []}
-    # graph_start, graph_finals = (0, [2])
-    # automata = {"a": [(0, 1)], "b": [(1, 3), (2, 3)], "S": [(1, 2)]}
-    # automata_start, automata_finals = (0, [3])
+    def get_unique_labels(self) -> list[str]:
+        return list(["(" + str(num) for num in self.open_context_nums]) + list(")" + str(num) for num in self.closed_context_nums)
 
-    labels = [
-        "assign",
-        "assign_r",
-        "alloc",
-        "alloc_r",
-        "load_f1",
-        "load_f1_r",
-        "store_f1",
-        "store_f1_r",
-        # "load_f2",
-        # "load_f2_r",
-        # "store_f2",
-        # "store_f2_r",
-        "Alias",
-        "PointsTo",
-        "FlowsTo",
-        "(_1",
-        ")_1",
-        "(_2",
-        ")_2",
-    ]
-    automata_raw = {
-        # "Alias": [(2, 3), (4, 5), (8, 9), (10, 11)],
-        "Alias": [(2, 3), (8, 9)],
-        "assign": [(0, 0)],
-        "alloc": [(0, 1)],
-        "load_f1": [(0, 2)],
-        "store_f1": [(3, 0)],
-        # "load_f2": [(0, 4)],
-        # "store_f2": [(5, 0)],
-        "alloc_r": [(6, 7)],
-        "assign_r": [(7, 7)],
-        "load_f1_r": [(7, 8)],
-        "store_f1_r": [(9, 7)],
-        # "load_f2_r": [(7, 10)],
-        # "store_f2_r": [(11, 7)],
-        "PointsTo": [(12, 13)],
-        "FlowsTo": [(13, 14)],
-    }
+    def get_graph_size(self) -> int:
+        max_node = -1
+        for frm, _, to in self.open_context:
+            max_node = max(max_node, frm, to)
+        for frm, _, to in self.closed_context:
+            max_node = max(max_node, frm, to)
+        for frm, to in self.sigma:
+            max_node = max(max_node, frm, to)
 
-    graph_generated = generate(2, 2)
-    print_matrix_to_dot(graph_generated, "data2.dot")
+        return max_node + 1
 
-    (graph, graph_start, graph_finals) = get_automata_2_2(automata_raw.keys())
-    deep = 2
+    def get_start_final_state(self) -> tuple[int, list[int]]:
+        size = self.get_graph_size()
 
-    # graph_raw = {"(_1": [(0, 1), (1, 2), (2, 2)], ")_1": [(0, 0), (1, 0), (2, 2)]}
-    # for label in automata_raw.keys():
-    #     graph_raw[label] = [(0, 0), (1, 1), (2, 2)]
-    # graph = defaultdict(list, graph_raw)
-    # graph_start, graph_finals = (0, [0, 1, 2])
+        if size == 0:
+            print("empty automata")
+            exit(-1)
 
-    if deep == 1:
-        automata_raw["(_1"] = []
-        automata_raw[")_1"] = []
-        for label in ["(_1", ")_1"]:
-            for i in range(15):
-                if i in [4, 5, 10, 11]:
-                    continue
-                automata_raw[label].append((i, i))
-        automata_start, automata_finals = 0, [1, 7, 14]
-        automata = defaultdict(list, automata_raw)
-    elif deep == 2:
-        automata_raw["(_1"] = []
-        automata_raw[")_1"] = []
-        automata_raw["(_2"] = []
-        automata_raw[")_2"] = []
-        for label in ["(_1", ")_1", "(_2", ")_2"]:
-            for i in range(15):
-                if i in [4, 5, 10, 11]:
-                    continue
-                automata_raw[label].append((i, i))
-        automata_start, automata_finals = 0, [1, 7, 14]
-        automata = defaultdict(list, automata_raw)
+        return (0, [0, self.get_graph_size() - 1])
 
-    graph_n = 0
-    for l in graph.values():
-        for pair in l:
-            graph_n = max(graph_n, pair[0] + 1, pair[1] + 1)
+    def get_graph(self) -> dict[str, list[tuple[int, int]]]:
+        graph: dict[str, list[tuple[int, int]]] = defaultdict(list)
+        for frm, num, to in self.open_context:
+            graph["(" + str(num)].append((frm, to))
+        for frm, num, to in self.closed_context:
+            graph[")" + str(num)].append((frm, to))
+        for frm, to in self.sigma:
+            for label in self.other_labels:
+                graph[label].append((frm, to))
 
-    automata_n = 0
-    for l in automata.values():
-        for pair in l:
-            automata_n = max(automata_n, pair[0] + 1, pair[1] + 1)
+        return graph
 
-    graph_matrices = []
+    def add_other_labels(self, labels: list[str]):
+        self.other_labels = self.other_labels + labels
+
+    def add_open(self, frm: int, num: int, to: int):
+        self.open_context.append((int(frm), int(num), int(to)))
+        self.open_context_nums.add(int(num))
+
+    def add_closed(self, frm: int, num: int, to: int):
+        self.closed_context.append((int(frm), int(num), int(to)))
+        self.closed_context_nums.add(int(num))
+
+    def add_all_open(self, frm: int, to: int):
+        for num in list(self.open_context_nums):
+            self.add_open(frm, num, to)
+
+    def add_all_closed(self, frm: int, to: int):
+        for num in list(self.closed_context_nums):
+            self.add_closed(frm, num, to)
+
+    def add_sigma(self, frm: int, to: int):
+        self.sigma.append((int(frm), int(to)))
+
+    def from_gsvgit_automata(self, gsvgit_automata: Matrix):
+        graph_generated = gsvgit_automata
+
+        open_matrix = Matrix(UINT64, graph_generated.nrows, graph_generated.ncols, name="open matrix")
+        open_matrix << graph_generated.apply(graphblas.unary.decode_open).select(">", 0)
+        edges = open_matrix.to_edgelist()
+        edges = zip(edges[0], edges[1])
+        for _edg, _lbl in edges:
+            self.add_open(_edg[0], _lbl, _edg[1])
+
+        close_matrix = Matrix(UINT64, graph_generated.nrows, graph_generated.ncols, name="close matrix")
+        close_matrix << graph_generated.apply(graphblas.unary.decode_close).select(">", 0)
+        edges = close_matrix.to_edgelist()
+        edges = zip(edges[0], edges[1])
+        for _edg, _lbl in edges:
+            self.add_closed(_edg[0], _lbl, _edg[1])
+
+        all_open_matrix = Matrix(UINT64, graph_generated.nrows, graph_generated.ncols, name="all open matrix")
+        all_open_matrix << graph_generated.select("select_all_pass")
+        edges, _ = all_open_matrix.to_edgelist()
+        for frm, to in edges:
+            self.add_all_open(frm, to)
+
+        all_closed_matrix = Matrix(UINT64, graph_generated.nrows, graph_generated.ncols, name="all closed matrix")
+        all_closed_matrix << graph_generated.select("select_all_ret")
+        edges, _ = all_closed_matrix.to_edgelist()
+        for frm, to in edges:
+            self.add_all_closed(frm, to)
+
+        sigma_matrix = Matrix(UINT64, graph_generated.nrows, graph_generated.ncols, name="all closed matrix")
+        sigma_matrix << graph_generated.select("select_all_sigma")
+        edges, _ = sigma_matrix.to_edgelist()
+        for frm, to in edges:
+            self.add_sigma(frm, to)
+
+    def __repr__(self):
+        return f"Automata(open_context={self.open_context}, closed_context={self.closed_context}, sigma={self.sigma})"
+
+
+class PointsToRSM:
+    def __init__(self, num_fields: int = 1):
+        self.num_fields = int(num_fields)
+        self.labels: list[str] = [
+            "assign",
+            "assign_r",
+            "alloc",
+            "alloc_r",
+            "Alias",
+            "PointsTo",
+            "FlowsTo",
+        ]
+        self.nodes_count: int = 0
+        for i in range(1, self.num_fields + 1):
+            self.labels.extend([f"load_f{i}", f"load_f{i}_r", f"store_f{i}", f"store_f{i}_r"])
+
+        self.graph: dict[str, list[tuple[int, int]]] = defaultdict(list)
+        self._build_graph()
+
+    def _build_graph(self):
+        # There is always nodes [0..6] and these edges:
+        #
+        # for PointsTo box:
+        # 0 -assign-> 0
+        # 0 -alloc--> 1
+        #
+        #  for FlowsTo box:
+        # 2 -alloc_r--> 3
+        # 3 -assing_r-> 3
+        #
+        # for Alias box:
+        # 4 -PointsTo-> 5
+        # 5 -FlowsTo--> 6
+        #
+        # Other nodes for new fields
+        # For each new field we add two new nodes for each PointsTo and FlowsTo box
+        size = max(3, 2 + self.num_fields * 2)
+
+        self.graph["assign"].append((0, 0))
+        self.graph["alloc"].append((0, 1))
+        self.graph["alloc_r"].append((2, 3))
+        self.graph["assign_r"].append((3, 3))
+        self.graph["PointsTo"].append((4, 5))
+        self.graph["FlowsTo"].append((5, 6))
+
+        self.nodes_count = 7
+
+        for i in range(1, self.num_fields + 1):
+
+            self.graph[f"load_f{i}"].append((0, self.nodes_count))
+            self.graph["Alias"].append((self.nodes_count, self.nodes_count + 1))
+            self.graph[f"store_f{i}"].append((self.nodes_count + 1, 0))
+            self.nodes_count += 2
+
+            self.graph[f"store_f{i}_r"].append((3, self.nodes_count))
+            self.graph["Alias"].append((self.nodes_count, self.nodes_count + 1))
+            self.graph[f"load_f{i}_r"].append((self.nodes_count + 1, 3))
+            self.nodes_count += 2
+
+    def add_other_labels(self, labels: list[str]):
+        for label in labels:
+            for num in range(0, self.nodes_count):
+                self.graph[label].append((num, num))
+
+    def get_unique_labels(self) -> list[str]:
+        return list(self.labels)
+
+    def get_graph(self) -> dict[str, list[tuple[int, int]]]:
+        return {k: list(v) for k, v in self.graph.items()}
+
+    def get_graph_size(self) -> int:
+        return self.nodes_count
+
+    def get_start_final_state(self) -> tuple[int, list[int]]:
+        size = self.get_graph_size()
+        return (0, [1, 3, 6])
+
+    def get_PointTo_states(self) -> set[int]:
+        nums = set([0, 1])
+        for i in range(self.num_fields):
+            nums.add(7 + i * 4)
+            nums.add(8 + i * 4)
+        return nums
+
+    def get_FlowsTo_states(self) -> set[int]:
+        nums = set([2, 3])
+        for i in range(self.num_fields):
+            nums.add(9 + i * 4)
+            nums.add(10 + i * 4)
+        return nums
+
+    def get_Alias_states(self) -> set[int]:
+        return set([4, 5, 6])
+
+    def __repr__(self):
+        return f"PointsToRSM(num_fields={self.num_fields}, size={self.get_graph_size()})"
+
+
+class Box:
+    def __init__(
+        self,
+        label: str,
+        start_state: str,
+        final_states: list[str],
+    ):
+        self.label = label
+        self.states: set[str] = set()
+        self.edges: list[tuple[str, str, str]] = []  # From, label, To
+        self.start_state = start_state
+        self.final_states = final_states
+
+    def to_dot_cluster(self) -> str:
+        dot = f"subgraph cluster_{self.label} {{\n"
+        dot += f'    label = "{self.label}";\n'
+        dot += f"    {self.start_state} [shape=circle, style=filled, fillcolor=green];\n"
+        for state in self.final_states:
+            dot += f"    {state} [shape=doublecircle];\n"
+        for edge in self.edges:
+            dot += f'    {edge[0]} -> {edge[2]} [label="{edge[1]}"];\n'
+        dot += "}\n"
+        return dot
+
+    def to_cfg(self) -> str:
+        result = ""
+        for frm, label, to in self.edges:
+            if frm == self.start_state:
+                frm = self.label
+            if to == self.start_state:
+                to = self.label
+
+            result += f"{frm}\t{label}\t{to}\n"
+
+        for state in self.final_states:
+            result += f"{state}\n"
+
+        return result
+
+    def __repr__(self) -> str:
+        return (
+            f"Box(label={self.label}, "
+            f"states={self.states}, "
+            f"edges={self.edges}, "
+            f"start_state={self.start_state}, "
+            f"final_states={self.final_states})"
+        )
+
+
+def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
+    automata = Automata()
+    rsm = PointsToRSM(RSM_FIELDS_NUM)
+
+    automata.from_gsvgit_automata(generate(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH))
+
+    rsm.add_other_labels(automata.get_unique_labels())
+    automata.add_other_labels(rsm.get_unique_labels())
+
+    automata_graph = automata.get_graph()
+    automata_start, automata_finals = automata.get_start_final_state()
+    automata_n = automata.get_graph_size()
+
+    rsm_graph = rsm.get_graph()
+    rsm_start, rsm_finals = rsm.get_start_final_state()
+    rsm_n = rsm.get_graph_size()
+
     automata_matrices = []
+    rsm_matrices = []
+
+    labels = automata.get_unique_labels() + rsm.get_unique_labels()
 
     for label in labels:
-        graph_matrices.append(Matrix.from_edgelist(graph[label], dtype=BOOL, nrows=graph_n, ncols=graph_n, name=f"graph_{label}"))
-        automata_matrices.append(Matrix.from_edgelist(automata[label], dtype=BOOL, nrows=automata_n, ncols=automata_n, name=f"automata_{label}"))
+        automata_matrices.append(Matrix.from_edgelist(automata_graph[label], dtype=BOOL, nrows=automata_n, ncols=automata_n, name=f"automata_{label}"))
+        rsm_matrices.append(Matrix.from_edgelist(rsm_graph[label], dtype=BOOL, nrows=rsm_n, ncols=rsm_n, name=f"rsm_{label}"))
 
-    with open("data.dot", "w") as file:
+    box_file = open(f"graphs/boxes_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.dot", "w")
+    file = open(f"graphs/graph_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.dot", "w")
+    cfg_file = open(f"grammars/grammar_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.cnf", mode="w")
 
-        def w(text):
-            print(text, file=file)
+    def w(text):
+        print(text, file=file)
 
-        w("digraph g {")
-        w(dot_rsm(automata_matrices, labels, automata_start, automata_finals, "_r", name="RSM (S -> aSb | ab)"))
-        w(dot_finite_state_machine(graph_matrices, labels, graph_start, graph_finals, "_g", name="FSM (ab|aabb)"))
+    def w_cfg(text):
+        print(text, file=cfg_file)
 
-        # i = intersection(automata, graph)
-        # print(i)
-        i = build_tensor_index(graph_matrices, automata_matrices, [8, 9, 10], {8: 0, 9: 7, 10: 12}, {8: [1], 9: [7], 10: [14]})
-        kron = []
-        for i in range(0, len(graph)):
-            kron.append(kronecker_bool(automata_matrices[i], graph_matrices[i]))
-            # print_kron_to_dot(kron[i], f"kron_build{i}.dot", automata[0].ncols, graph[0].ncols, label=map[i])
+    def w_box(text):
+        print(text, file=box_file)
 
-        w("subgraph cluster3 {")
-        w(f'label="intersection FSM and RSM (before BFS)"')
-        for i in range(0, len(kron)):
-            kron_str = print_kron_to_str(kron[i], graph_matrices[0].ncols, graph_finals, automata_finals, label=labels[i])
-            print(print_kron_to_CFG_rule(kron[i], graph_matrices[0].ncols, graph_finals, automata_finals, label=labels[i]))
-            w(kron_str)
-        w("}")
+    w("digraph g {")
+    w(dot_rsm(rsm_matrices, labels, rsm_start, rsm_finals, "_r", name=f"RSM (Num of fields: {RSM_FIELDS_NUM})"))
+    w(
+        dot_finite_state_machine(
+            automata_matrices,
+            labels,
+            automata_start,
+            automata_finals,
+            "_g",
+            name=f"FSM (Num of contexts: {AUTOMATA_CONTEXT_NUM}, depth: {AUTOMATA_DEPTH})",
+        )
+    )
 
-        kron_sum = Matrix(dtype=BOOL, nrows=kron[0].nrows, ncols=kron[0].ncols, name="kron_sum")
-        for matrix in kron:
-            kron_sum(accum=binary.lor) << matrix
+    kron: list[Matrix] = []
+    for i in range(0, len(labels)):
+        kron.append(kronecker_bool(rsm_matrices[i], automata_matrices[i]))
+        # print_kron_to_dot(kron[i], f"kron_build{i}.dot", automata[0].ncols, graph[0].ncols, label=map[i])
 
-        edges = kron[2].to_edgelist()
-        for edge in edges[0]:
-            # (a, b) -S-> (c, d)
-            print(edge)
-            a = int(edge[0] // graph_n)
-            c = int(edge[1] // graph_n)
-            b = int(edge[0] % graph_n)
-            d = int(edge[1] % graph_n)
+    boxesPointsTo: list[Box] = []
+    boxesFlowsTo: list[Box] = []
+    boxesAlias: list[Box] = []
 
-            # (a, b) -S-> (0, b)
-            print(f"a: {a}, b: {b}, c: {c}, d: {d}, first: {a * graph_n + b}, {b}, second: {automata_finals[0] * graph_n + d}, {c * graph_n + d}")
-            kron_sum[a * graph_n + b, b] << True
-            # (fin, d) _S-> (c, d)
-            kron_sum[automata_finals[0] * graph_n + d, c * graph_n + d] << True
+    for i in range(automata_n):
+        boxesPointsTo.append(Box(label=f"PointsTo_{i}", start_state=f"S{i}_0_{i}", final_states=[f"S{i}_1_0", f"S{i}_1_{automata_n - 1}"]))
+        boxesFlowsTo.append(Box(label=f"FlowsTo_{i}", start_state=f"S{i}_2_{i}", final_states=[f"S{i}_3_0", f"S{i}_3_{automata_n - 1}"]))
+        boxesAlias.append(Box(label=f"Alias_{i}", start_state=f"S{i}_4_{i}", final_states=[f"S{i}_6_0", f"S{i}_6_{automata_n - 1}"]))
 
-        reachable = bfs(kron_sum, [0]).to_dict().keys()
-        print(reachable)
+    PointsTo_states = rsm.get_PointTo_states()
+    FlowsTo_states = rsm.get_PointTo_states()
+    Alias_states = rsm.get_PointTo_states()
+    for i, label in enumerate(labels):
+        print(f"label: {i}/{len(labels)}")
+        edges = kron[i].to_edgelist()
+        edgesZipped = list(zip(edges[0], edges[1]))
+        result = ""
+        for boxNum in range(automata_n):
+            boxes: list[tuple[Box, Box, Box]] = list(zip(boxesPointsTo, boxesFlowsTo, boxesAlias))
 
-        for i in range(len(kron)):
-            edges, _ = kron[i].to_edgelist()
-            edges = list(filter(lambda x: x[0] in reachable and x[1] in reachable, edges))
-            kron[i] = Matrix.from_edgelist(edges, dtype=BOOL, nrows=matrix.nrows, ncols=matrix.ncols, name=matrix.name)
+            for _edg, _ in edgesZipped:
+                box: Box
+                first_start_state = int(_edg[0] // automata_n)
+                first_end_state = int(_edg[1] // automata_n)
+                second_start_state = int(_edg[0] % automata_n)
+                second_end_state = int(_edg[1] % automata_n)
 
-        w("subgraph cluster4 {")
-        w(f'label="BFS"')
-        for i in range(0, len(kron)):
-            kron_str = print_kron_to_str(kron[i], graph_matrices[0].ncols, graph_finals, automata_finals, label=labels[i], suffix="_")
-            w(kron_str)
-        w("}")
-        w("}")
+                newState0 = f"S{boxNum}_{first_start_state}_{second_start_state}"
+                newState1 = f"S{boxNum}_{first_end_state}_{second_end_state}"
+                if label in ["PointsTo", "FlowsTo", "Alias"]:
+                    newLabel = f"{label}_{second_start_state}"
+                else:
+                    newLabel = label
+
+                if first_start_state in PointsTo_states:
+                    box = boxes[boxNum][0]
+                elif first_start_state in FlowsTo_states:
+                    box = boxes[boxNum][1]
+                elif first_start_state in Alias_states:
+                    box = boxes[boxNum][2]
+
+                box.states.add(newState0)
+                box.states.add(newState1)
+                box.edges.append((newState0, newLabel, newState1))
+
+    w_box("digraph g {")
+    for i in range(automata_n):
+        print(f"{i}/{automata_n}")
+        # w_box(boxesPointsTo[i].to_dot_cluster())
+        w_cfg(boxesPointsTo[i].to_cfg())
+        # w_box(boxesFlowsTo[i].to_dot_cluster())
+        w_cfg(boxesFlowsTo[i].to_cfg())
+        # w_box(boxesAlias[i].to_dot_cluster())
+        w_cfg(boxesAlias[i].to_cfg())
+    w_box("}")
+    w_cfg("\nCount:\nPointsTo_0")
+
+    # w("subgraph cluster3 {")
+    # w(f'label="intersection FSM and RSM (before BFS)"')
+    # grammar = ""
+    # for i in range(0, len(labels)):
+    #     kron_str = print_kron_to_str(kron[i], automata_matrices[0].ncols, automata_finals, rsm_finals, label=labels[i])
+    #     grammar += print_kron_to_CFG_rule(kron[i], automata_matrices[0].ncols, automata_finals, rsm_finals, label=labels[i])
+    #     grammar += "\n"
+    #     w(kron_str)
+    # w_cfg(grammar)
+    # w("}")
+
+    # kron_sum = Matrix(dtype=BOOL, nrows=kron[0].nrows, ncols=kron[0].ncols, name="kron_sum")
+    # for matrix in kron:
+    #     kron_sum(accum=binary.lor) << matrix
+
+    # edges = kron[2].to_edgelist()
+    # for edge in edges[0]:
+    #     # (a, b) -S-> (c, d)
+    #     print(edge)
+    #     a = int(edge[0] // automata_n)
+    #     c = int(edge[1] // automata_n)
+    #     b = int(edge[0] % automata_n)
+    #     d = int(edge[1] % automata_n)
+
+    #     # (a, b) -S-> (0, b)
+    #     print(f"a: {a}, b: {b}, c: {c}, d: {d}, first: {a * automata_n + b}, {b}, second: {rsm_finals[0] * automata_n + d}, {c * automata_n + d}")
+    #     kron_sum[a * automata_n + b, b] << True
+    #     # (fin, d) _S-> (c, d)
+    #     kron_sum[rsm_finals[0] * automata_n + d, c * automata_n + d] << True
+
+    # reachable = bfs(kron_sum, [0]).to_dict().keys()
+    # print(reachable)
+
+    # for i in range(len(kron)):
+    #     edges, _ = kron[i].to_edgelist()
+    #     edges = list(filter(lambda x: x[0] in reachable and x[1] in reachable, edges))
+    #     kron[i] = Matrix.from_edgelist(edges, dtype=BOOL, nrows=matrix.nrows, ncols=matrix.ncols, name=matrix.name)
+
+    # w("subgraph cluster4 {")
+    # w(f'label="BFS"')
+    # grammar = ""
+    # for i in range(0, len(kron)):
+    #     kron_str = print_kron_to_str(kron[i], automata_matrices[0].ncols, automata_finals, rsm_finals, label=labels[i], suffix="_")
+    #     w(kron_str)
+    # w("}")
+    # w("}")
+
+    file.close()
+    box_file.close()
+    cfg_file.close()
 
 
-mytest()
+if False:
+    AUTOMATA_CONTEXT_NUM_MAX = 2
+    AUTOMATA_DEPTH_MAX = 2
+    RSM_FIELDS_NUM_MAX = 2
+    for AUTOMATA_CONTEXT_NUM in range(1, AUTOMATA_CONTEXT_NUM_MAX + 1):
+        for AUTOMATA_DEPTH in range(1, AUTOMATA_DEPTH_MAX + 1):
+            for RSM_FIELDS_NUM in range(1, RSM_FIELDS_NUM_MAX + 1):
+                mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM)
+else:
+    AUTOMATA_CONTEXT_NUM = 2
+    AUTOMATA_DEPTH = 2
+    RSM_FIELDS_NUM = 414
+    mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM)

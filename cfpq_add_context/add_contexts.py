@@ -148,7 +148,7 @@ def to_label_decomposed_graph(graph, automata_size, initial_graph_size):
     # print_matrix_to_dot(assign_r,"assign_r.dot")
 
     matrices: Dict[Symbol, Matrix] = {}
-
+    matrices: dict[Symbol, Matrix] = {}
     matrices[Symbol("alloc")] = alloc
     matrices[Symbol("alloc_r")] = alloc_r
 

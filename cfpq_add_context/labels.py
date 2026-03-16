@@ -2,6 +2,7 @@ import graphblas
 
 from graphblas.core.operator import Monoid, BinaryOp, SelectOp, UnaryOp
 from graphblas import binary
+import numpy as np
 
 """
 |---------------21 bit-----------|---------------21 bit-------------|---------------22 bit-----------|
@@ -122,6 +123,14 @@ def select_pass_and_return_op(x, i, j, k):
     )
 
 
+def select_pass_op(x, i, j, k):
+    return x & ALL_OPEN_CONTEXTS == x and x != ALL_OPEN_CONTEXTS and x & ALL_OPEN_CONTEXTS > 0 and ((x & ALL_OPEN_CONTEXTS) >> 43) % 2 == 1
+
+
+def select_ret_op(x, i, j, k):
+    return x & ALL_CLOSE_CONTEXTS == x and x != ALL_CLOSE_CONTEXTS and x & ALL_CLOSE_CONTEXTS > 0 and ((x & ALL_CLOSE_CONTEXTS) >> 22) % 2 == 1
+
+
 def select_not_reversed_op(x, i, j, k):
     return (
         (x & SIGMA_WITHOUT_CONTEXTS == ALLOC)
@@ -135,6 +144,16 @@ def select_not_reversed_op(x, i, j, k):
     )
 
 
+def select_all_pass_op(x, i, j, k):
+    return x == ALL_OPEN_CONTEXTS or x == SIGMA
+
+
+def select_all_ret_op(x, i, j, k):
+    return x == ALL_CLOSE_CONTEXTS or x == SIGMA_WITHOUT_OPEN_CONTEXTS or x == SIGMA
+
+def select_all_sigma_op(x, i, j, k):
+    return x == SIGMA or x == SIGMA_WITHOUT_CONTEXTS or x == SIGMA_WITHOUT_OPEN_CONTEXTS
+
 SelectOp.register_new("select_alloc", select_alloc_op, lazy=True)
 SelectOp.register_new("select_alloc_r", select_alloc_r_op, lazy=True)
 SelectOp.register_new("select_assign", select_assign_op, lazy=True)
@@ -144,6 +163,11 @@ SelectOp.register_new("select_store", select_store_op, lazy=True)
 SelectOp.register_new("select_load_r", select_load_r_op, lazy=True)
 SelectOp.register_new("select_store_r", select_store_r_op, lazy=True)
 SelectOp.register_new("select_pass_and_return", select_pass_and_return_op, lazy=True)
+SelectOp.register_new("select_pass", select_pass_op, lazy=True)
+SelectOp.register_new("select_ret", select_ret_op, lazy=True)
+SelectOp.register_new("select_all_pass", select_all_pass_op, lazy=True)
+SelectOp.register_new("select_all_ret", select_all_ret_op, lazy=True)
+SelectOp.register_new("select_all_sigma", select_all_sigma_op, lazy=True)
 SelectOp.register_new("select_not_reversed", select_not_reversed_op, lazy=True)
 
 
@@ -163,7 +187,27 @@ def decode_store_r_op(x):
     return ((x & SIGMA_WITHOUT_CONTEXTS) - OFFSET - 3) // 4
 
 
+def decode_open_op(x):
+    if not (x & ALL_OPEN_CONTEXTS == x and x != ALL_OPEN_CONTEXTS and x & ALL_OPEN_CONTEXTS > 0 and ((x & ALL_OPEN_CONTEXTS) >> 43) % 2 == 1):
+        return 0
+    if ((x & ALL_OPEN_CONTEXTS) >> 43) % 2 == 0:
+        return 0
+    else:
+        return (((x & ALL_OPEN_CONTEXTS) >> 43) - 1) >> 1
+
+
+def decode_close_op(x):
+    if not (x & ALL_CLOSE_CONTEXTS == x and x != ALL_CLOSE_CONTEXTS and x & ALL_CLOSE_CONTEXTS > 0 and ((x & ALL_CLOSE_CONTEXTS) >> 22) % 2 == 1):
+        return 0
+    if ((x & ALL_CLOSE_CONTEXTS) >> 22) % 2 == 0:
+        return 0
+    else:
+        return (((x & ALL_CLOSE_CONTEXTS) >> 22) - 1) >> 1
+
+
 UnaryOp.register_new("decode_load", decode_load_op, lazy=True)
 UnaryOp.register_new("decode_load_r", decode_load_r_op, lazy=True)
 UnaryOp.register_new("decode_store", decode_store_op, lazy=True)
 UnaryOp.register_new("decode_store_r", decode_store_r_op, lazy=True)
+UnaryOp.register_new("decode_open", decode_open_op, lazy=False)
+UnaryOp.register_new("decode_close", decode_close_op, lazy=False)

@@ -16,7 +16,7 @@ from cfpq_add_context.labels import (
 from cfpq_add_context.utils import print_matrix_to_dot
 
 
-def generate(number_of_contexts, depth):
+def generate(number_of_contexts: int, depth: int) -> Matrix:
 
     def mk_open_context(i):
         return mk_open_context_from_pass(i % number_of_contexts)
