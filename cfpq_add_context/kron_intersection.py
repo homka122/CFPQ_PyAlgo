@@ -12,12 +12,12 @@ import graphblas.select
 import cfpq_add_context.gen_automata
 import time
 
-from typing import List, Mapping
+from typing import List, Mapping, Iterable, Callable
 
 import cfpq_add_context.labels
 from cfpq_add_context.utils import print_matrix_to_dot
 from cfpq_add_context.intersection import bfs
-from cfpq_model.cnf_grammar_template import CnfGrammarTemplate, Symbol 
+from cfpq_model.cnf_grammar_template import CnfGrammarTemplate, Symbol
 
 
 def kronecker_bool(graph, automata) -> Matrix:
@@ -306,6 +306,7 @@ def transitive_closure(A: Matrix) -> Matrix:
 
 from .gen_automata import generate
 from collections import defaultdict
+from cfpq_model.cnf_grammar_template import Symbol
 
 
 def get_automata_1_1(keys: List[str]):
@@ -585,8 +586,8 @@ class Box:
             dot += f'    {self.get_state_name(edge[0])} -> {self.get_state_name(edge[2])} [label="{edge[1]}"];\n'
         dot += "}\n"
         return dot
-    
-    def to_cfg(self) -> str:
+
+    def to_cfg_str(self) -> str:
         result = ""
         for frm, label, to in self.edges:
             frm = self.get_state_name(frm)
@@ -599,9 +600,15 @@ class Box:
 
         return result
 
+    def get_complex_rules(self) -> list[tuple[str, str, str]]:
+        rules = []
+        for frm, label, to in self.edges:
+            rules.append((self.get_state_name(frm), label, self.get_state_name(to)))
+        return rules
+
     def get_state_name(self, state: str) -> str:
-        if state in self.start_states:
-            return f"{self.label}_{state.split('_')[-1]}"
+        # if state in self.start_states:
+        #     return f"{self.label}_{state.split('_')[-1]}"
         return state
 
     def __repr__(self) -> str:
@@ -614,7 +621,161 @@ class Box:
         )
 
 
+class _Sym:
+    def __init__(self, rsm_state: int, automata_state: int, contexts_num: int, is_term: bool = False, term_label: str = ""):
+        self.rsm_state = rsm_state
+        self.automata_state = automata_state
+        self.contexts_num = contexts_num
+        self.is_term = is_term
+        self.term_label = term_label
+        self.depth, self.index = self._automata_state_info(automata_state)
+
+    # get depth and index of automata state
+    def _automata_state_info(self, automata_state: int) -> tuple[int, int]:
+        if self.is_term:
+            return (0, 0)
+        depth = 0
+        state_copy = automata_state
+        while state_copy >= 0:
+            state_copy -= self.contexts_num**depth
+            if state_copy < 0:
+                break
+            depth += 1
+
+        initial_index = state_copy + self.contexts_num ** (depth)
+        group_num = initial_index // self.contexts_num
+        group_inner_num = initial_index % self.contexts_num
+
+        return (int(depth), int(group_num) * self.contexts_num + int(group_inner_num))
+
+    def __repr__(self):
+        if self.is_term:
+            return f"{self.term_label}"
+        return f"S_{self.rsm_state}_{self._automata_state_info(self.automata_state)}"
+        # return f"S_{self.rsm_state}_{self.automata_state}"
+
+
+class CFGIntersection:
+    def __init__(self, start: _Sym, contexts_num: int):
+        self.start: _Sym = start
+        self.binary_rules: list[tuple[_Sym, _Sym, _Sym]] = []
+        self.simple_rules: list[tuple[_Sym, _Sym]] = []
+        self.epsilon_rules: list[_Sym] = []
+        self.nonterminals: set[_Sym] = {start}
+        self.contexts_num = contexts_num
+
+    def get_rules_count(self) -> int:
+        return len(self.binary_rules) + len(self.simple_rules) + len(self.epsilon_rules)
+
+    def _get_sym_from_raw(self, sym: Symbol | _Sym | str) -> _Sym:
+        if isinstance(sym, _Sym):
+            return sym
+
+        if isinstance(sym, str):
+            sym = Symbol(sym)
+
+        if not sym.label.startswith("S_"):
+            return _Sym(0, 0, self.contexts_num, is_term=True, term_label=sym.label)
+
+        rsm_state = int(sym.label.split("_")[1])
+        automata_state = int(sym.label.split("_")[2])
+        return _Sym(rsm_state, automata_state, self.contexts_num)
+
+    def add_binary_rule(self, lhs: Symbol | _Sym | str, rhs1: Symbol | _Sym | str, rhs2: Symbol | _Sym | str) -> None:
+        lhs = self._get_sym_from_raw(lhs)
+        rhs1 = self._get_sym_from_raw(rhs1)
+        rhs2 = self._get_sym_from_raw(rhs2)
+
+        self.binary_rules.append((lhs, rhs1, rhs2))
+        self.nonterminals.add(lhs)
+
+    def add_simple_rule(self, lhs: Symbol | _Sym | str, rhs: Symbol | _Sym | str) -> None:
+        lhs = self._get_sym_from_raw(lhs)
+        rhs = self._get_sym_from_raw(rhs)
+
+        self.simple_rules.append((lhs, rhs))
+        self.nonterminals.add(lhs)
+
+    def add_epsilon_rule(self, lhs: Symbol | _Sym | str) -> None:
+        lhs = self._get_sym_from_raw(lhs)
+
+        self.epsilon_rules.append(lhs)
+        self.nonterminals.add(lhs)
+
+    def group_by_automata_column(self) -> None:
+        triples: set[str] = set()
+        new_binary_rules: list[tuple[_Sym, _Sym, _Sym]] = []
+        for lhs, rhs1, rhs2 in self.binary_rules:
+            if rhs1.is_term:
+                s = f"S_{lhs.rsm_state}_{lhs.depth} {rhs1} S_{rhs2.rsm_state}_{rhs2.depth}"
+                if s in triples:
+                    continue
+                triples.add(s)
+                new_binary_rules.append((lhs, rhs1, rhs2))
+            else:
+                s =f"S_{lhs.rsm_state}_{lhs.depth} S_{rhs1.rsm_state}_{rhs1.depth} S_{rhs2.rsm_state}_{rhs2.depth}"
+                if s in triples:
+                    continue
+                triples.add(s)
+                new_binary_rules.append((lhs, rhs1, rhs2))
+        self.binary_rules = new_binary_rules
+
+    def iter_rules(self) -> Iterable[tuple[_Sym, _Sym | None, _Sym | None]]:
+        for lhs, rhs in self.simple_rules:
+            yield (lhs, rhs, None)
+        for lhs, rhs1, rhs2 in self.binary_rules:
+            yield (lhs, rhs1, rhs2)
+        for lhs in self.epsilon_rules:
+            yield (lhs, None, None)
+
+    def check_property_complex(self, func: Callable[[_Sym, _Sym, _Sym], bool]) -> bool:
+        result = True
+
+        for lhs, rhs1, rhs2 in self.binary_rules:
+            result = result and func(lhs, rhs1, rhs2)
+            if not result:
+                return result
+
+        return result
+
+    def to_text(self) -> str:
+        lines: List[str] = []
+        for lhs, rhs in self.simple_rules:
+            lines.append(f"{lhs} -> {rhs}")
+        for lhs, rhs1, rhs2 in self.binary_rules:
+            lines.append(f"{lhs} -> {rhs1} {rhs2}")
+        for lhs in self.epsilon_rules:
+            lines.append(f"{lhs} ->")
+        rules = "\n".join(lines)
+        rules += "\n\nCount:\n"
+        rules += f"{self.start}\n"
+        return rules
+    
+    def to_text_groups(self) -> str:
+        lines: List[str] = []
+        for lhs, rhs1, rhs2 in self.iter_rules():
+            lhs = f"S_{lhs.rsm_state}_G{lhs.depth}"
+            if rhs1 and not rhs1.is_term:
+                rhs1 = f"S_{rhs1.rsm_state}_G{rhs1.depth}"
+            if rhs2:
+                rhs2 = f"S_{rhs2.rsm_state}_G{rhs2.depth}"
+            if rhs1 is None:
+                lines.append(f"{lhs} ->")
+            elif rhs2 is None:
+                lines.append(f"{lhs} -> {rhs1}")
+            else:
+                lines.append(f"{lhs} -> {rhs1} {rhs2}")
+        rules = "\n".join(lines)
+        rules += "\n\nCount:\n"
+        rules += f"{self.start}\n"
+        return rules
+
+    def __repr__(self) -> str:
+        return f"CFGIntersection(start={self.start}, rules={len(self.simple_rules) + len(self.binary_rules)})"
+
+
 def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
+    print(f"depth: {AUTOMATA_DEPTH}, num contexts: {AUTOMATA_CONTEXT_NUM}, fields num: {RSM_FIELDS_NUM}\n\t", end="")
     automata = Automata()
     rsm = PointsToRSM(RSM_FIELDS_NUM)
 
@@ -671,14 +832,30 @@ def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
         kron.append(kronecker_bool(rsm_matrices[i], automata_matrices[i]))
         # print_kron_to_dot(kron[i], f"kron_build{i}.dot", automata[0].ncols, graph[0].ncols, label=map[i])
 
-    boxPointsTo: Box = Box(label="PointsTo", start_states=[], final_states=["S_1_0", f"S_1_{automata_n - 1}"])
-    boxFlowsTo: Box = Box(label="FlowsTo", start_states=[], final_states=["S_3_0", f"S_3_{automata_n - 1}"])
-    boxAlias: Box = Box(label="Alias", start_states=[], final_states=["S_6_0", f"S_6_{automata_n - 1}"])
+    def automata_state_str(state: int) -> str:
+        return str(state)
+        depth = 0
+        state_copy = state
+        while state_copy >= 0:
+            state_copy -= AUTOMATA_CONTEXT_NUM**depth
+            if state_copy < 0:
+                break
+            depth += 1
+
+        initial_index = state_copy + AUTOMATA_CONTEXT_NUM ** (depth)
+        group_num = initial_index // AUTOMATA_CONTEXT_NUM
+        group_inner_num = initial_index % AUTOMATA_CONTEXT_NUM
+
+        return f"G({int(depth)} {int(group_num) * AUTOMATA_CONTEXT_NUM + int(group_inner_num)})"
+
+    boxPointsTo: Box = Box(label="PointsTo", start_states=[], final_states=[f"S_1_{automata_state_str(0)}", f"S_1_{automata_state_str(automata_n - 1)}"])
+    boxFlowsTo: Box = Box(label="FlowsTo", start_states=[], final_states=[f"S_3_{automata_state_str(0)}", f"S_3_{automata_state_str(automata_n - 1)}"])
+    boxAlias: Box = Box(label="Alias", start_states=[], final_states=[f"S_6_{automata_state_str(0)}", f"S_6_{automata_state_str(automata_n - 1)}"])
 
     for i in range(automata_n):
-        boxPointsTo.start_states.append(f"S_0_{i}")
-        boxFlowsTo.start_states.append(f"S_2_{i}")
-        boxAlias.start_states.append(f"S_4_{i}")
+        boxPointsTo.start_states.append(f"S_0_{automata_state_str(i)}")
+        boxFlowsTo.start_states.append(f"S_2_{automata_state_str(i)}")
+        boxAlias.start_states.append(f"S_4_{automata_state_str(i)}")
 
     PointsTo_states = rsm.get_PointTo_states()
     FlowsTo_states = rsm.get_FlowsTo_states()
@@ -696,10 +873,11 @@ def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
             second_start_state = int(_edg[0] % automata_n)
             second_end_state = int(_edg[1] % automata_n)
 
-            newState0 = f"S_{first_start_state}_{second_start_state}"
-            newState1 = f"S_{first_end_state}_{second_end_state}"
+            newState0 = f"S_{first_start_state}_{automata_state_str(second_start_state)}"
+            newState1 = f"S_{first_end_state}_{automata_state_str(second_end_state)}"
             if label in ["PointsTo", "FlowsTo", "Alias"]:
-                newLabel = f"{label}_{second_start_state}"
+                mapp = {"PointsTo": "0", "FlowsTo": "2", "Alias": "4"}
+                newLabel = f"S_{mapp[label]}_{automata_state_str(second_start_state)}"
             else:
                 newLabel = label
 
@@ -716,13 +894,111 @@ def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
 
     w_box("digraph g {")
     w_box(boxPointsTo.to_dot_cluster())
-    w_cfg(boxPointsTo.to_cfg())
     w_box(boxFlowsTo.to_dot_cluster())
-    w_cfg(boxFlowsTo.to_cfg())
     w_box(boxAlias.to_dot_cluster())
-    w_cfg(boxAlias.to_cfg())
     w_box("}")
-    w_cfg("\nCount:\nPointsTo_0")
+    # w_cfg(boxPointsTo.to_cfg_str())
+    # w_cfg(boxFlowsTo.to_cfg_str())
+    # w_cfg(boxAlias.to_cfg_str())
+    # w_cfg("\nCount:\nPointsTo_0")
+
+    cfg = CFGIntersection(_Sym(0, 0, AUTOMATA_CONTEXT_NUM), AUTOMATA_CONTEXT_NUM)
+    rules = boxPointsTo.get_complex_rules() + boxFlowsTo.get_complex_rules() + boxAlias.get_complex_rules()
+    final_state = boxPointsTo.final_states + boxFlowsTo.final_states + boxAlias.final_states
+    for rule in rules:
+        cfg.add_binary_rule(rule[0], rule[1], rule[2])
+    for state in final_state:
+        cfg.add_epsilon_rule(state)
+
+    print(cfg.to_text())
+    w_cfg(cfg.to_text())
+    old_size = cfg.get_rules_count()
+    cfg.group_by_automata_column()
+    print("===================")
+    print(cfg.to_text_groups())
+    print("===============")
+    print(f"DIFF: {cfg.get_rules_count()}/{old_size}, compression: {cfg.get_rules_count()/old_size}")
+
+    countMapLeft: dict[str, int] = {}
+    countMapRight: dict[str, int] = {}
+    numOfGState = 1
+    for i in range(AUTOMATA_DEPTH + 1):
+        numOfGState += AUTOMATA_CONTEXT_NUM**i
+    # print(numOfGState)
+    skipped = 0
+    rhs1BanList1 = (
+        [f"({i+1}" for i in range(AUTOMATA_CONTEXT_NUM)] + [f"){i+1}" for i in range(AUTOMATA_CONTEXT_NUM)] + [f"Alias_{i}" for i in range(numOfGState)]
+    )
+    rhs1BanList2 = (
+        ["alloc", "assign", "alloc_r", "assign_r"]
+        + [f"load_f{i+1}" for i in range(RSM_FIELDS_NUM)]
+        + [f"load_f{i+1}_r" for i in range(RSM_FIELDS_NUM)]
+        + [f"store_f{i+1}" for i in range(RSM_FIELDS_NUM)]
+        + [f"store_f{i+1}_r" for i in range(RSM_FIELDS_NUM)]
+    )
+    rhs2BanList1 = [f"PointsTo_{i}" for i in range(numOfGState)] + [f"S_3_{i}" for i in range(numOfGState)]
+    pairs: set[tuple[str, str, str]] = set()
+    new_rules = []
+    for lhs, rhs1, rhs2 in rules:
+        break
+        rsm_label, automata_depth = (lhs.split("_")[1]), (lhs.split("G(")[1].split(" ")[0])
+        if (rsm_label, automata_depth, rhs1) in pairs:
+            skipped += 1
+            continue
+
+        pairs.add((rsm_label, automata_depth, rhs1))
+
+        if rhs1.startswith("(") or rhs1.startswith(")"):
+            if (rsm_label, automata_depth, rhs1) in pairs:
+                skipped += 1
+                continue
+
+            if automata_depth == 3:
+                new_rules.append(f"S_{rsm_label}_G{automata_depth} -> {rhs1} S_{rsm_label}_G{int(automata_depth)}")
+                pairs.add((rsm_label, automata_depth, rhs1))
+                continue
+
+            if automata_depth == 0 and rhs1.startswith(")"):
+                new_rules.append(f"{lhs} -> {rhs1} {rhs2}")
+                continue
+
+            pairs.add((rsm_label, automata_depth, rhs1))
+            if rhs1.startswith("("):
+                new_rules.append(f"S_{rsm_label}_G{automata_depth} -> {rhs1} S_{rsm_label}_G{int(automata_depth) + 1}")
+            else:
+                new_rules.append(f"S_{rsm_label}_G{int(automata_depth) + 1} -> {rhs1} S_{rsm_label}_G{automata_depth}")
+            continue
+
+        # if rhs1 in rhs1BanList1:
+        #     skipped += 1
+        #     continue
+        # if rhs2 in rhs2BanList1:
+        #     skipped += 1
+        #     continue
+        # if rhs1 in rhs1BanList2:
+        #     skipped += 1
+        #     continue
+        if rhs1 not in countMapLeft:
+            countMapLeft[rhs1] = 0
+        if rhs2 not in countMapRight:
+            countMapRight[rhs2] = 0
+        countMapLeft[rhs1] += 1
+        countMapRight[rhs2] += 1
+        new_rules.append(f"{lhs} -> {rhs1} {rhs2}")
+    # skipped -= len(rhs1BanList1)
+    # skipped -= len(rhs2BanList1)
+    # skipped -= len(rhs1BanList2)
+    print("Count of rhs in left in rules or desc order:")
+    for rhs, count in sorted(countMapLeft.items(), key=lambda x: x[1], reverse=True):
+        print(f"{rhs}: {count}")
+    print("Count of rhs in right in rules or desc order:")
+    for rhs, count in sorted(countMapRight.items(), key=lambda x: x[1], reverse=True):
+        print(f"{rhs}: {count}")
+
+    for rule in new_rules:
+        print(rule)
+
+    print(f"Compression: {(len(rules) - skipped)/(len(rules))}. (Skipped: {skipped}, all: {len(rules)}, rules now: {len(rules)-skipped})")
 
     # w("subgraph cluster3 {")
     # w(f'label="intersection FSM and RSM (before BFS)"')
@@ -785,7 +1061,7 @@ if False:
             for RSM_FIELDS_NUM in range(1, RSM_FIELDS_NUM_MAX + 1):
                 mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM)
 else:
-    AUTOMATA_CONTEXT_NUM = 4
-    AUTOMATA_DEPTH = 4
-    RSM_FIELDS_NUM = 414
+    AUTOMATA_CONTEXT_NUM = 1
+    AUTOMATA_DEPTH = 1
+    RSM_FIELDS_NUM = 2
     mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM)
