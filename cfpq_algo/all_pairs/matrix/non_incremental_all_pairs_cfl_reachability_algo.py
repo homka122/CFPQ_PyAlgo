@@ -21,7 +21,7 @@ class NonIncrementalAllPairsCFLReachabilityMatrixAlgoInstance(
                 if rhs in self.grammar.non_terminals:
                     self.graph.iadd_by_symbol(lhs, self.graph[rhs], op=self.monoid)
             self.graph.mxm(
-                self.graph.to_unoptimized(),
+                self.graph,
                 self.grammar,
                 accum=self.graph,
                 op=self.semiring

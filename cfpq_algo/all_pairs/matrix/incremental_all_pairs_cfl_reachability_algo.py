@@ -15,7 +15,7 @@ class IncrementalAllPairsCFLReachabilityMatrixAlgoInstance(
     AbstractAllPairsCflReachabilityMatrixAlgoInstance
 ):
     def compute_transitive_closure(self):
-        front = self.graph.to_unoptimized()
+        front = self.graph
         self.graph = self.graph.empty_copy()
         while front.nvals != 0:
             new_front = self.graph.mxm(front, self.grammar, op=self.semiring)
@@ -29,7 +29,7 @@ class IncrementalAllPairsCFLReachabilityMatrixAlgoInstance(
             for (lhs, rhs) in self.grammar.simple_rules:
                 if rhs in self.grammar.non_terminals:
                     new_front.iadd_by_symbol(lhs, front[rhs], op=self.monoid)
-            front = new_front.to_unoptimized()
+            front = new_front
             front = self.graph.rsub(front, op=self.algebraic_structure.sub_op)
 
 

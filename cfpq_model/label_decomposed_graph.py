@@ -14,7 +14,9 @@ from graphblas.exceptions import IndexOutOfBound
 from cfpq_matrix.block.block_matrix_space import BlockMatrixSpace
 from cfpq_matrix.block.block_matrix_space_impl import BlockMatrixSpaceImpl
 from cfpq_matrix.optimized_matrix import OptimizedMatrix
-from cfpq_matrix.subtractable_semiring import SubOp
+from cfpq_matrix.matrix_to_optimized_adapter import MatrixToOptimizedAdapter
+
+# from cfpq_matrix.subtractable_semiring import SubOp
 from cfpq_model.cnf_grammar_template import CnfGrammarTemplate, Symbol
 
 
@@ -33,6 +35,7 @@ class LabelDecomposedGraph:
     or `(vertex_count, block_matrix_space.block_count * vertex_count)`, where
     `block_matrix_space.block_count` is the largest "label index" in the entire graph.
     """
+
     def __init__(
         self,
         vertex_count: int,
@@ -54,26 +57,25 @@ class LabelDecomposedGraph:
         try:
             dfs = pd.read_csv(
                 path,
-                delim_whitespace=True,
+                sep='\s+',
                 header=None,
-                names=['EDGE_SOURCE', 'EDGE_DESTINATION', 'EDGE_LABEL', 'LABEL_INDEX'],
-                dtype={'EDGE_SOURCE': np.int64, 'EDGE_DESTINATION': np.int64, 'EDGE_LABEL': str,
-                       'LABEL_INDEX': pd.Int64Dtype()},
-                chunksize=1_000_000
+                names=["EDGE_SOURCE", "EDGE_DESTINATION", "EDGE_LABEL", "LABEL_INDEX"],
+                dtype={"EDGE_SOURCE": np.int64, "EDGE_DESTINATION": np.int64, "EDGE_LABEL": str, "LABEL_INDEX": pd.Int64Dtype()},
+                chunksize=1_000_000,
             )
 
             # edge_label -> (edge_source_chunks, edge_destination_chunks, label_index_chunks)
             data_chunks = defaultdict(lambda: ([], [], []))
 
             for df in dfs:
-                df['LABEL_INDEX'].fillna(0, inplace=True)
+                df.fillna({"LABEL_INDEX": 0}, inplace=True)
 
-                for label, group in df.groupby('EDGE_LABEL'):
+                for label, group in df.groupby("EDGE_LABEL"):
                     symbol = Symbol(label)
                     (edge_sources, edge_destinations, label_indices) = data_chunks[symbol]
-                    edge_sources.append(group['EDGE_SOURCE'].to_numpy(dtype=np.int64))
-                    edge_destinations.append(group['EDGE_DESTINATION'].to_numpy(dtype=np.int64))
-                    label_indices.append(group['LABEL_INDEX'].to_numpy(dtype=np.int64))
+                    edge_sources.append(group["EDGE_SOURCE"].to_numpy(dtype=np.int64))
+                    edge_destinations.append(group["EDGE_DESTINATION"].to_numpy(dtype=np.int64))
+                    label_indices.append(group["LABEL_INDEX"].to_numpy(dtype=np.int64))
 
             vertex_count = 1
             block_count = 1
@@ -81,22 +83,14 @@ class LabelDecomposedGraph:
             # edge_label -> (edge_sources, edge_destinations, label_indices)
             data = {}
 
-            for symbol, (
-                    edge_sources_chunks,
-                    edge_destinations_chunks,
-                    label_indices_chunks
-            ) in data_chunks.items():
+            for symbol, (edge_sources_chunks, edge_destinations_chunks, label_indices_chunks) in data_chunks.items():
                 edge_sources = np.concatenate(edge_sources_chunks)
                 edge_destinations = np.concatenate(edge_destinations_chunks)
                 label_indices = np.concatenate(label_indices_chunks)
 
                 data[symbol] = (edge_sources, edge_destinations, label_indices)
 
-                vertex_count = max(
-                    vertex_count,
-                    int(edge_sources.max()) + 1,
-                    int(edge_destinations.max()) + 1
-                )
+                vertex_count = max(vertex_count, int(edge_sources.max()) + 1, int(edge_destinations.max()) + 1)
                 block_count = max(block_count, int(label_indices.max()) + 1)
 
             matrices: Dict[Symbol, Matrix] = {}
@@ -109,7 +103,7 @@ class LabelDecomposedGraph:
                         columns=edge_destinations,
                         values=True,
                         nrows=block_count * vertex_count if symbol.is_indexed else vertex_count,
-                        ncols=vertex_count
+                        ncols=vertex_count,
                     )
                 except IndexOutOfBound as e:
                     raise ValueError(
@@ -119,10 +113,7 @@ class LabelDecomposedGraph:
                     ) from e
 
             return LabelDecomposedGraph(
-                vertex_count=vertex_count,
-                block_matrix_space=BlockMatrixSpaceImpl(n=vertex_count, block_count=block_count),
-                dtype=BOOL,
-                matrices=matrices
+                vertex_count=vertex_count, block_matrix_space=BlockMatrixSpaceImpl(n=vertex_count, block_count=block_count), dtype=BOOL, matrices=matrices
             )
         except Exception as e:
             raise ValueError(
@@ -136,38 +127,24 @@ class LabelDecomposedGraph:
             ) from e
 
     def write_to_pocr_graph_file(self, path: Union[Path, str]):
-        with open(path, 'w', encoding="utf-8") as output_file:
+        with open(path, "w", encoding="utf-8") as output_file:
             for symbol, matrix in self.matrices.items():
                 edge_label = symbol.label
                 (rows, columns, _) = matrix.to_coo()
                 if matrix.shape[0] == self.vertex_count:
-                    edges_df = pd.DataFrame({
-                        'source': rows,
-                        'destination': columns,
-                        'label': edge_label
-                    })
+                    edges_df = pd.DataFrame({"source": rows, "destination": columns, "label": edge_label})
                 else:
-                    edges_df = pd.DataFrame({
-                        'source': rows % self.vertex_count,
-                        'destination': columns,
-                        'label': edge_label,
-                        'label_index': rows // self.vertex_count
-                    })
-                csv_string = edges_df.to_csv(sep='\t', index=False, header=False)
+                    edges_df = pd.DataFrame(
+                        {"source": rows % self.vertex_count, "destination": columns, "label": edge_label, "label_index": rows // self.vertex_count}
+                    )
+                csv_string = edges_df.to_csv(sep="\t", index=False, header=False)
                 output_file.write(csv_string)
 
     def __sizeof__(self) -> int:
         return sum(m.__sizeof__() for m in self.matrices.values())
 
     def __getitem__(self, symbol: Symbol):
-        return (
-            self.matrices[symbol]
-            if symbol in self.matrices
-            else self.block_matrix_space.create_space_element(
-                self.dtype,
-                is_vector=symbol.is_indexed
-            )
-        )
+        return self.matrices[symbol] if symbol in self.matrices else self.block_matrix_space.create_space_element(self.dtype, is_vector=symbol.is_indexed)
 
 
 class OptimizedLabelDecomposedGraph:
@@ -175,13 +152,8 @@ class OptimizedLabelDecomposedGraph:
     Representation of an edge labeled graph similar to `LabelDecomposedGraph`,
     but with `OptimizedMatrix` instead of regular `Matrix`.
     """
-    def __init__(
-        self,
-        vertex_count: int,
-        block_matrix_space: BlockMatrixSpace,
-        dtype: DataType,
-        matrix_optimizer: Callable[[Matrix], OptimizedMatrix]
-    ):
+
+    def __init__(self, vertex_count: int, block_matrix_space: BlockMatrixSpace, dtype: DataType, matrix_optimizer: Callable[[Matrix], OptimizedMatrix]):
         self.vertex_count = vertex_count
         self.block_matrix_space = block_matrix_space
         self.dtype = dtype
@@ -189,17 +161,16 @@ class OptimizedLabelDecomposedGraph:
         self.matrices: Dict[Symbol, OptimizedMatrix] = {}
 
     @staticmethod
-    def from_unoptimized(
-        unoptimized_graph: LabelDecomposedGraph,
-        matrix_optimizer: Callable[[Matrix], OptimizedMatrix]
-    ) -> "OptimizedLabelDecomposedGraph":
+    def from_unoptimized(unoptimized_graph: LabelDecomposedGraph, matrix_optimizer: Callable[[Matrix], OptimizedMatrix]) -> "OptimizedLabelDecomposedGraph":
         optimized_graph = OptimizedLabelDecomposedGraph(
             vertex_count=unoptimized_graph.vertex_count,
             block_matrix_space=unoptimized_graph.block_matrix_space,
             dtype=unoptimized_graph.dtype,
-            matrix_optimizer=matrix_optimizer
+            matrix_optimizer=matrix_optimizer,
         )
-        optimized_graph.iadd(unoptimized_graph, op=graphblas.monoid.any)
+        for symbol, matrix in unoptimized_graph.matrices.items():
+            optimized_graph.iadd_by_symbol(symbol, MatrixToOptimizedAdapter(matrix), op=graphblas.monoid.any)
+        # optimized_graph.iadd(unoptimized_graph, op=graphblas.monoid.any)
         return optimized_graph
 
     def empty_copy(self) -> "OptimizedLabelDecomposedGraph":
@@ -214,10 +185,7 @@ class OptimizedLabelDecomposedGraph:
         return LabelDecomposedGraph(
             vertex_count=self.vertex_count,
             block_matrix_space=self.block_matrix_space,
-            matrices={
-                symbol: matrix.to_unoptimized()
-                for symbol, matrix in self.matrices.items()
-            },
+            matrices={symbol: matrix.to_unoptimized() for symbol, matrix in self.matrices.items()},
             dtype=self.dtype,
         )
 
@@ -225,40 +193,41 @@ class OptimizedLabelDecomposedGraph:
     def nvals(self) -> int:
         return sum(matrix.nvals for matrix in self.matrices.values())
 
-    def iadd_by_symbol(self, symbol: Symbol, matrix: Matrix, op: Monoid):
+    def iadd_by_symbol(self, symbol: Symbol, matrix: OptimizedMatrix, op: Monoid) -> None:
         if symbol not in self:
-            self.matrices[symbol] = self.block_matrix_space.automize_block_operations(
-                self.matrix_optimizer(self._create_matrix_for_symbol(symbol))
-            )
+            self.matrices[symbol] = self.block_matrix_space.automize_block_operations(self.matrix_optimizer(self._create_matrix_for_symbol(symbol)))
         self.matrices[symbol].iadd(matrix, op)
 
-    def iadd(self, other: LabelDecomposedGraph, op: Monoid):
+    def iadd(self, other: "OptimizedLabelDecomposedGraph", op: Monoid) -> "OptimizedLabelDecomposedGraph":
         for symbol, matrix in other.matrices.items():
             self.iadd_by_symbol(symbol, matrix, op)
         return self
 
-    def rsub(self, other: LabelDecomposedGraph, op: SubOp) -> LabelDecomposedGraph:
-        return LabelDecomposedGraph(
+    def rsub(
+        self, other: "OptimizedLabelDecomposedGraph", op: Callable[[OptimizedMatrix, OptimizedMatrix], OptimizedMatrix]
+    ) -> "OptimizedLabelDecomposedGraph":
+        result = LabelDecomposedGraph(
             vertex_count=self.vertex_count,
             block_matrix_space=self.block_matrix_space,
             dtype=self.dtype,
             matrices={
-                symbol: (self.matrices[symbol].rsub(matrix, op) if symbol in self else matrix)
+                symbol: (self.matrices[symbol].rsub(matrix, op).to_unoptimized() if symbol in self else matrix.to_unoptimized())
                 for symbol, matrix in other.matrices.items()
             },
         )
+        return self.from_unoptimized(result, self.matrix_optimizer)
 
     def mxm(
-            self,
-            other: LabelDecomposedGraph,
-            grammar: CnfGrammarTemplate,
-            op: Semiring,
-            accum: Optional["OptimizedLabelDecomposedGraph"] = None,
-            swap_operands: bool = False,
+        self,
+        other: "OptimizedLabelDecomposedGraph",
+        grammar: CnfGrammarTemplate,
+        op: Semiring,
+        accum: Optional["OptimizedLabelDecomposedGraph"] = None,
+        swap_operands: bool = False,
     ) -> "OptimizedLabelDecomposedGraph":
         if accum is None:
             accum = self.empty_copy()
-        for (lhs, rhs1, rhs2) in grammar.complex_rules:
+        for lhs, rhs1, rhs2 in grammar.complex_rules:
             if swap_operands:
                 rhs1, rhs2 = rhs2, rhs1
             if rhs1 in self.matrices and rhs2 in other.matrices:
@@ -271,19 +240,15 @@ class OptimizedLabelDecomposedGraph:
         return accum
 
     def rmxm(
-            self,
-            other: LabelDecomposedGraph,
-            grammar: CnfGrammarTemplate,
-            op: Semiring,
-            accum: Optional["OptimizedLabelDecomposedGraph"] = None
+        self, other: "OptimizedLabelDecomposedGraph", grammar: CnfGrammarTemplate, op: Semiring, accum: Optional["OptimizedLabelDecomposedGraph"] = None
     ) -> "OptimizedLabelDecomposedGraph":
         return self.mxm(other, grammar, op, accum, swap_operands=True)
 
-    def __getitem__(self, symbol: Symbol) -> Matrix:
+    def __getitem__(self, symbol: Symbol) -> OptimizedMatrix:
         return (
-            self.matrices[symbol].to_unoptimized()
+            self.matrices[symbol]
             if symbol in self
-            else self._create_matrix_for_symbol(symbol)
+            else self.block_matrix_space.automize_block_operations(self.matrix_optimizer(self._create_matrix_for_symbol(symbol)))
         )
 
     def _create_matrix_for_symbol(self, symbol) -> Matrix:

@@ -1,13 +1,13 @@
 import weakref
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable
 
 import graphblas
 from graphblas.core.dtypes import DataType
 from graphblas.core.matrix import Matrix
 from graphblas.core.operator import Semiring, Monoid
 
-from cfpq_matrix.subtractable_semiring import SubOp
+# from cfpq_matrix.subtractable_semiring import SubOp
 
 MatrixFormat = Optional[str]
 
@@ -22,6 +22,7 @@ class OptimizedMatrix(ABC):
     Interface including core matrix operations,
     that many performance-oriented decorators implement.
     """
+
     @property
     @abstractmethod
     def nvals(self) -> int:
@@ -47,23 +48,23 @@ class OptimizedMatrix(ABC):
         pass
 
     @abstractmethod
-    def mxm(self, other: Matrix, op: Semiring, swap_operands: bool = False) -> Matrix:
+    def mxm(self, other: "OptimizedMatrix", op: Semiring, swap_operands: bool = False) -> "OptimizedMatrix":
         pass
 
     @abstractmethod
-    def rsub(self, other: Matrix, op: SubOp) -> Matrix:
+    def rsub(self, other: "OptimizedMatrix", op: Callable[["OptimizedMatrix", "OptimizedMatrix"], "OptimizedMatrix"]) -> "OptimizedMatrix":
         """
         Returns the result of subtracting `self` from `other`.
         """
 
     @abstractmethod
-    def iadd(self, other: Matrix, op: Monoid):
+    def iadd(self, other: "OptimizedMatrix", op: Monoid):
         """
         Adds `other` to `self` in-place.
         """
 
     @abstractmethod
-    def optimize_similarly(self, other: Matrix) -> "OptimizedMatrix":
+    def optimize_similarly(self, other: "OptimizedMatrix") -> "OptimizedMatrix":
         """
         Applies to `other` matrix all optimizations that are applied to `self` matrix.
         """

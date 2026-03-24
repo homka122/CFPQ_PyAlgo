@@ -46,7 +46,7 @@ class AbstractAllPairsCflReachabilityMatrixAlgoInstance(AllPairsCflReachabilityA
         self.add_epsilon_edges()
         self.add_edges_for_simple_terminal_rules()
         self.compute_transitive_closure()
-        return self.graph[self.grammar.start_nonterm]
+        return self.graph[self.grammar.start_nonterm].to_unoptimized()
 
     @abstractmethod
     def compute_transitive_closure(self):
@@ -61,7 +61,7 @@ class AbstractAllPairsCflReachabilityMatrixAlgoInstance(AllPairsCflReachabilityA
             dtype=self.graph.dtype
         )
         for non_terminal in self.grammar.epsilon_rules:
-            self.graph.iadd_by_symbol(non_terminal, id_matrix, op=self.monoid)
+            self.graph.iadd_by_symbol(non_terminal, self.graph.matrix_optimizer(id_matrix), op=self.monoid)
 
     def add_edges_for_simple_terminal_rules(self):
         for (lhs, rhs) in self.grammar.simple_rules:

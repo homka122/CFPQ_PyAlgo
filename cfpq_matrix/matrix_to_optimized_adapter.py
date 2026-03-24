@@ -1,11 +1,11 @@
-from typing import Tuple
+from typing import Tuple, Callable
 
 from graphblas.core.dtypes import DataType
 from graphblas.core.matrix import Matrix
 from graphblas.core.operator import Monoid, Semiring
 
 from cfpq_matrix.optimized_matrix import OptimizedMatrix, MatrixFormat
-from cfpq_matrix.subtractable_semiring import SubOp
+# from cfpq_matrix.subtractable_semiring import SubOp
 
 
 class MatrixToOptimizedAdapter(OptimizedMatrix):
@@ -33,21 +33,17 @@ class MatrixToOptimizedAdapter(OptimizedMatrix):
     def to_unoptimized(self) -> Matrix:
         return self.base
 
-    def mxm(self, other: Matrix, op: Semiring, swap_operands: bool = False) -> Matrix:
-        return (
-            other.mxm(self.base, op)
-            if swap_operands
-            else self.base.mxm(other, op)
-        ).new(self.dtype)
+    def mxm(self, other: OptimizedMatrix, op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
+        return other.mxm(self, op) if swap_operands else MatrixToOptimizedAdapter(self.base.mxm(other.to_unoptimized(), op).new(self.dtype))
 
-    def rsub(self, other: Matrix, op: SubOp) -> Matrix:
-        return op(other, self.base)
+    def rsub(self, other: OptimizedMatrix, op: Callable[["OptimizedMatrix", "OptimizedMatrix"], "OptimizedMatrix"]) -> OptimizedMatrix:
+        return op(other, self)
 
-    def iadd(self, other: Matrix, op: Monoid):
-        self.base << self.base.ewise_add(other, op=op)
+    def iadd(self, other: OptimizedMatrix, op: Monoid):
+        self.base << self.base.ewise_add(other.to_unoptimized(), op=op)
 
-    def optimize_similarly(self, other: Matrix) -> OptimizedMatrix:
-        return MatrixToOptimizedAdapter(other)
+    def optimize_similarly(self, other: OptimizedMatrix) -> OptimizedMatrix:
+        return MatrixToOptimizedAdapter(other.to_unoptimized())
 
     def __sizeof__(self):
         return self.base.__sizeof__()
