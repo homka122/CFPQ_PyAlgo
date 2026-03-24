@@ -21,7 +21,7 @@ def print_matrix_to_dot(matrix, file):
             elif int(_lbl) == 0:
                 _lbl = "0"
             elif _lbl == (int(_lbl) & int(labels.ALL_OPEN_CONTEXTS)):
-                print(_lbl)
+                # print(_lbl)
                 _lbl = "(_" + str((int(_lbl) >> 43 >> 1))
             elif _lbl == (int(_lbl) & int(labels.ALL_CLOSE_CONTEXTS)):
                 _lbl = ")_" + str((int(_lbl) >> 22 >> 1))

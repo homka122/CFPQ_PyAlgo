@@ -27,7 +27,11 @@ def indexed_to_boolean_decomposition(graph, block_count):
     return result
 
 
-def transitive_reduction(assigns, vertices_with_other_edges):
+def transitive_reduction(assigns, vertices_with_other_edges, is_log=False):
+    def log(*args, **kwargs) -> None:
+        if is_log:
+            print(args, kwargs)
+
     result = Matrix(BOOL, assigns.ncols, assigns.ncols, name="reduced_assigns")
     endpoints = vertices_with_other_edges.diag(name="endpoints")
     assigns_transposed = Matrix(BOOL, assigns.ncols, assigns.ncols, name="assigns_transposed")
@@ -37,54 +41,58 @@ def transitive_reduction(assigns, vertices_with_other_edges):
     visited = Matrix(BOOL, assigns.ncols, assigns.ncols, name="visited")
     visited("any") << frontier
     while True:
-        print("Frontier nvals = ", frontier.nvals)
-        # print("Frontier: ", frontier)
+        log("Frontier nvals = ", frontier.nvals)
+        # log("Frontier: ", frontier)
         if frontier.nvals == 0:
             break
         new_frontier = Matrix(BOOL, assigns.ncols, assigns.ncols, name="new_frontier")
         new_frontier(~visited.S) << Matrix.mxm(frontier, assigns, "any_pair")
-        # print("New frontier: ", new_frontier)
+        # log("New frontier: ", new_frontier)
         filter = Matrix(BOOL, assigns.ncols, assigns.ncols, name="filter")
-        # print("Endpoints: ", endpoints)
+        # log("Endpoints: ", endpoints)
         x = new_frontier.reduce_rowwise("any").diag()
         filter(~x.S) << endpoints
 
-        # print("Filter: ", filter)
+        # log("Filter: ", filter)
         # to_result = Matrix(BOOL, assigns.ncols, assigns.ncols, name = "to_result")
         # to_result << (Matrix.mxm(new_frontier, filter, "any_pair"))
-        # print("To result: ", to_result)
+        # log("To result: ", to_result)
 
         result("any") << (Matrix.mxm(new_frontier, filter, "any_pair"))
 
-        print("Result nvals = ", result.nvals)
+        log("Result nvals = ", result.nvals)
 
         visited("any") << new_frontier
 
         new_frontier_2 = Matrix(BOOL, assigns.ncols, assigns.ncols, name="new_frontier_2")
         new_frontier_2(~result.S) << new_frontier
-        # print("New frontier 2: ", new_frontier_2)
+        # log("New frontier 2: ", new_frontier_2)
         frontier = new_frontier_2
 
     return result
 
 
-def to_label_decomposed_graph(graph, automata_size, initial_graph_size):
+def to_label_decomposed_graph(graph, automata_size, initial_graph_size, is_log=False):
+    def log(*args, **kwargs) -> None:
+        if is_log:
+            print(args, kwargs)
+
     vertex_count = graph.nrows
     alloc = Matrix(BOOL, graph.ncols, graph.nrows, name="alloc_after_intersection")
     alloc << graph.select(graphblas.select.select_alloc)
-    print("Boolean matrix for alloc nvals: ", alloc.nvals)
+    log("Boolean matrix for alloc nvals: ", alloc.nvals)
 
     alloc_r = Matrix(BOOL, graph.ncols, graph.nrows, name="alloc_r_after_intersection")
     alloc_r << alloc.T
-    print("Boolean matrix for alloc_r nvals: ", alloc_r.nvals)
+    log("Boolean matrix for alloc_r nvals: ", alloc_r.nvals)
 
-    print("mask start")
+    log("mask start")
     mask_v = Vector(BOOL, graph.ncols, name="mask_vector")
     ####exit_mask_v = Vector(BOOL, graph.ncols, name = "exit_mask_vector")
     mask_v("any") << alloc.reduce_columnwise("any")
     mask_v("any") << alloc.reduce_rowwise("any")
 
-    print("entrypoints start")
+    log("entrypoints start")
 
     # entrypoints = Vector(bool,graph.nrows, name="entrypoints")
     # entrypoints << graph.reduce_columnwise(op.lor)
@@ -95,11 +103,11 @@ def to_label_decomposed_graph(graph, automata_size, initial_graph_size):
 
     load_i = Matrix(UINT64, graph.ncols, graph.nrows, name="load_i_after_intersection")
     load_i << graph.select(graphblas.select.select_load).apply(graphblas.unary.decode_load)
-    print("Matrix for load_i nvals: ", load_i.nvals)
+    log("Matrix for load_i nvals: ", load_i.nvals)
 
     store_i = Matrix(UINT64, graph.ncols, graph.nrows, name="store_i_after_intersection")
     store_i << graph.select(graphblas.select.select_store).apply(graphblas.unary.decode_store)
-    print("Matrix for store_i nvals: ", store_i.nvals)
+    log("Matrix for store_i nvals: ", store_i.nvals)
 
     mask_v("any") << load_i.reduce_columnwise("any")
     mask_v("any") << load_i.reduce_rowwise("any")
@@ -110,27 +118,27 @@ def to_label_decomposed_graph(graph, automata_size, initial_graph_size):
     store_block_count = store_i.reduce_scalar("max").get(0) + 1
     load_block_count = load_i.reduce_scalar("max").get(0) + 1
     block_count = max(store_block_count, load_block_count)
-    print("BLOCK COUNT: ", block_count)
+    log("BLOCK COUNT: ", block_count)
 
     boolean_decompose_load = indexed_to_boolean_decomposition(load_i, block_count)
-    print("Boolean matrix for load nvals: ", boolean_decompose_load.nvals)
+    log("Boolean matrix for load nvals: ", boolean_decompose_load.nvals)
 
     boolean_decompose_store = indexed_to_boolean_decomposition(store_i, block_count)
-    print("Boolean matrix for store nvals: ", boolean_decompose_store.nvals)
+    log("Boolean matrix for store nvals: ", boolean_decompose_store.nvals)
 
     load_r_i = Matrix(UINT64, graph.ncols, graph.nrows, name="load_r_i_after_intersection")
     load_r_i << load_i.T
-    print("Matrix for load_r_i nvals: ", load_r_i.nvals)
+    log("Matrix for load_r_i nvals: ", load_r_i.nvals)
 
     boolean_decompose_load_r = indexed_to_boolean_decomposition(load_r_i, block_count)
-    print("Boolean matrix for load_r nvals: ", boolean_decompose_load_r.nvals)
+    log("Boolean matrix for load_r nvals: ", boolean_decompose_load_r.nvals)
 
     store_r_i = Matrix(UINT64, graph.ncols, graph.nrows, name="store_r_i_after_intersection")
     store_r_i << store_i.T
-    print("Matrix for store_r_i nvals: ", store_r_i.nvals)
+    log("Matrix for store_r_i nvals: ", store_r_i.nvals)
 
     boolean_decompose_store_r = indexed_to_boolean_decomposition(store_r_i, block_count)
-    print("Boolean matrix for store_r nvals: ", boolean_decompose_store_r.nvals)
+    log("Boolean matrix for store_r nvals: ", boolean_decompose_store_r.nvals)
 
     # mask_v("any") << exit_mask_v
     # assign_mask = mask_v.diag(name = "assign_mask")
@@ -138,13 +146,13 @@ def to_label_decomposed_graph(graph, automata_size, initial_graph_size):
 
     assign = Matrix(BOOL, graph.ncols, graph.nrows, name="assign_after_intersection")
     assign << graph.select(graphblas.select.select_assign)
-    print("Boolean matrix for assign nvals: ", assign.nvals)
+    log("Boolean matrix for assign nvals: ", assign.nvals)
 
     assign << transitive_reduction(assign, mask_v)
 
     assign_r = Matrix(BOOL, graph.ncols, graph.nrows, name="assign_r_after_intersection")
     assign_r << assign.T
-    print("Boolean matrix for assign_r nvals: ", assign_r.nvals)
+    log("Boolean matrix for assign_r nvals: ", assign_r.nvals)
 
     # print_matrix_to_dot(assign_r,"assign_r.dot")
 
@@ -235,7 +243,10 @@ def select_result(atm_size):
 SelectOp.register_new("select_result", select_result, parameterized=True)
 
 
-def normalize(solver_result, initial_graph_nvertices):
+def normalize(solver_result, initial_graph_nvertices, is_log=False):
+    def log(*args, **kwargs) -> None:
+        if is_log:
+            print(args, kwargs)
 
     normalization_start = time.perf_counter()
 
@@ -250,7 +261,7 @@ def normalize(solver_result, initial_graph_nvertices):
     #                                        ncols=initial_graph_nvertices, name = "normalized_solver_result")
     result = solver_result
     normalization_end = time.perf_counter()
-    print("Normalization of solver result done in ", normalization_end - normalization_start)
+    log("Normalization of solver result done in ", normalization_end - normalization_start)
 
     return result
 
