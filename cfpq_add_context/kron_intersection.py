@@ -304,40 +304,6 @@ def transitive_closure(A: Matrix) -> Matrix:
     return R
 
 
-def mytest():
-    graph_edges_p1_op = [(0, 2)]
-    graph_edges_p1_cl = [(0, 1), (1, 2), (2, 3), (3, 3)]
-    graph_edges_b = [(0, 0), (1, 1), (2, 2), (3, 3)]
-    graph_edges_S = [(0, 0), (1, 1), (2, 2), (3, 3)]
-    automata_edges_a = [(0, 0), (1, 1), (2, 2)]
-    automata_edges_b = [(0, 2), (1, 2)]
-    automata_edges_S = [(0, 1)]
-
-    graph = []
-    graph.append(Matrix.from_edgelist(graph_edges_a, dtype=BOOL, nrows=4, ncols=4, name="graph_a"))
-    graph.append(Matrix.from_edgelist(graph_edges_b, dtype=BOOL, nrows=4, ncols=4, name="graph_b"))
-    graph.append(Matrix.from_edgelist(graph_edges_S, dtype=BOOL, nrows=4, ncols=4, name="graph_S"))
-    automata = []
-    automata.append(Matrix.from_edgelist(automata_edges_a, dtype=BOOL, nrows=3, ncols=3, name="automata_a"))
-    automata.append(Matrix.from_edgelist(automata_edges_b, dtype=BOOL, nrows=3, ncols=3, name="automata_b"))
-    automata.append(Matrix.from_edgelist(automata_edges_S, dtype=BOOL, nrows=3, ncols=3, name="automata_S"))
-
-    # i = intersection(automata, graph)
-    # print(i)
-    i = build_tensor_index(graph, automata, [2], {2: 0}, {2: [2]})
-    kron = []
-    map = {0: "a", 1: "b", 2: "S"}
-    for i in range(0, len(graph)):
-        kron.append(kronecker_bool(automata[i], graph[i]))
-        print_kron_to_dot(
-            kron[i],
-            f"kron_build{i}.dot",
-            automata[0].ncols,
-            graph[0].ncols,
-            label=map[i],
-        )
-
-
 from .gen_automata import generate
 from collections import defaultdict
 
