@@ -152,3 +152,12 @@ cython_debug/
 
 #IDE
 .idea/
+
+# temp workspace ignore
+.vscode
+gpngs
+grammars
+graphs
+configs
+getpng.sh
+pyproject.toml
