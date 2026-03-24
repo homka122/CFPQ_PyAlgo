@@ -1,6 +1,6 @@
 import itertools
 from pathlib import Path
-from typing import List, Tuple, Union, Set
+from typing import List, Tuple, Union, Set, Iterable
 
 
 class Symbol:
@@ -25,27 +25,21 @@ class CnfGrammarTemplate:
         epsilon_rules: List[Symbol],
         simple_rules: List[Tuple[Symbol, Symbol]],
         complex_rules: List[Tuple[Symbol, Symbol, Symbol]],
-        non_terminals: set[Symbol] | None = None,
-        symbols: set[Symbol] | None = None,
     ):
         self.start_nonterm = start_nonterm
         self.epsilon_rules = epsilon_rules
         self.simple_rules = simple_rules
-        self.complex_rules = complex_rules
+        self.complex_rules: list[tuple[Symbol, Symbol, Symbol]] = complex_rules
         self._non_terminals = set()
         self._symbols = set()
-        for sym in epsilon_rules:
-            self._non_terminals.add(sym)
-            self._symbols.add(sym)
-        for sym, sym1 in simple_rules:
-            self._non_terminals.add(sym)
-            self._symbols.add(sym)
-            self._symbols.add(sym1)
-        for sym, sym1, sym2 in complex_rules:
-            self._non_terminals.add(sym)
-            self._symbols.add(sym)
-            self._symbols.add(sym1)
-            self._symbols.add(sym2)
+
+        for lhs, rhs1, rhs2 in self.iter_rules():
+            self._non_terminals.add(lhs)
+            self._symbols.add(lhs)
+            if rhs1 is not None:
+                self._symbols.add(rhs1)
+            if rhs2 is not None:
+                self._symbols.add(rhs2)
 
     @property
     def non_terminals(self) -> set[Symbol]:
@@ -54,6 +48,14 @@ class CnfGrammarTemplate:
     @property
     def symbols(self) -> set[Symbol]:
         return self._symbols
+
+    def iter_rules(self) -> Iterable[tuple[Symbol, Symbol | None, Symbol | None]]:
+        for lhs in self.epsilon_rules:
+            yield lhs, None, None
+        for lhs, rhs in self.simple_rules:
+            yield lhs, rhs, None
+        for lhs, rhs1, rhs2 in self.complex_rules:
+            yield lhs, rhs1, rhs2
 
     @staticmethod
     def read_from_pocr_cnf_file(path: Union[Path, str]) -> "CnfGrammarTemplate":
@@ -93,26 +95,15 @@ class CnfGrammarTemplate:
             epsilon_rules = []
             simple_rules = []
             complex_rules = []
-            non_terminals = set()
-            symbols = set()
 
             for line in lines:
                 parts = line.split()
                 if len(parts) == 1:
                     epsilon_rules.append(Symbol(parts[0]))
-                    non_terminals.add(Symbol(parts[0]))
-                    symbols.add(Symbol(parts[0]))
                 elif len(parts) == 2:
                     simple_rules.append((Symbol(parts[0]), Symbol(parts[1])))
-                    non_terminals.add(Symbol(parts[0]))
-                    symbols.add(Symbol(parts[0]))
-                    symbols.add(Symbol(parts[1]))
                 elif len(parts) == 3:
                     complex_rules.append((Symbol(parts[0]), Symbol(parts[1]), Symbol(parts[2])))
-                    non_terminals.add(Symbol(parts[0]))
-                    symbols.add(Symbol(parts[0]))
-                    symbols.add(Symbol(parts[1]))
-                    symbols.add(Symbol(parts[2]))
                 else:
                     raise ValueError(
                         f"Invalid rule format: `{line}` in file `{path}`. "
@@ -121,7 +112,7 @@ class CnfGrammarTemplate:
                     )
 
             print("Finish read grammar")
-            return CnfGrammarTemplate(start_nonterm, epsilon_rules, simple_rules, complex_rules, non_terminals, symbols)
+            return CnfGrammarTemplate(start_nonterm, epsilon_rules, simple_rules, complex_rules)
 
     def write_to_pocr_cnf_file(self, path: Union[Path, str], include_starting: bool = True) -> None:
         with open(path, "w", encoding="utf-8") as file:
