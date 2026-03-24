@@ -286,7 +286,7 @@ class OptimizedLabelDecomposedGraph:
             else self._create_matrix_for_symbol(symbol)
         )
 
-    def _create_matrix_for_symbol(self, symbol):
+    def _create_matrix_for_symbol(self, symbol) -> Matrix:
         return self.block_matrix_space.create_space_element(self.dtype, is_vector=symbol.is_indexed)
 
     def __contains__(self, symbol: Symbol) -> bool:

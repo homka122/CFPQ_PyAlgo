@@ -14,7 +14,7 @@ class PreProcessorSetting(AlgoSetting, ABC):
         self,
         graph: LabelDecomposedGraph,
         grammar: CnfGrammarTemplate
-    ) -> (LabelDecomposedGraph, CnfGrammarTemplate):
+    ) -> tuple[LabelDecomposedGraph, CnfGrammarTemplate]:
         pass
 
 
@@ -64,7 +64,7 @@ class IndexExplodingPreProcessorSetting(PreProcessorSetting):
         self,
         graph: LabelDecomposedGraph,
         grammar: CnfGrammarTemplate
-    ) -> (LabelDecomposedGraph, CnfGrammarTemplate):
+    ) -> tuple[LabelDecomposedGraph, CnfGrammarTemplate]:
         if not self.is_enabled:
             return graph, grammar
 
