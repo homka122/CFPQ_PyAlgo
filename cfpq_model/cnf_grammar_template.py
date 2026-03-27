@@ -57,6 +57,47 @@ class CnfGrammarTemplate:
         for lhs, rhs1, rhs2 in self.complex_rules:
             yield lhs, rhs1, rhs2
 
+    def group_rules(self, map: dict[str, list[str]]) -> None:
+        """
+        Group rules by rhs1 that present in map
+        
+        Map structure: 
+        {
+            "B_i": ["B_1", "B_2"],
+            "C_i": ["D_1", "D_2", "D_100"]
+        }
+        
+        Rules become from 
+        ```
+        A -> B_1 L
+        A -> B_2 L
+        B -> D_1 W
+        B -> D_100 W
+        ```
+        to
+        ```
+        A -> B_i L
+        B -> C_i W
+        ```
+        
+        TODO: make this more general
+        """
+        new_complex_rules: list[tuple[Symbol, Symbol, Symbol]] = []
+        visited: set[tuple[str, str, str]] = set()
+        for lhs, rhs1, rhs2 in self.complex_rules:
+            if rhs1.label not in [rhs for rhss in map.values() for rhs in rhss]:
+                new_complex_rules.append((lhs, rhs1, rhs2))
+                continue
+            for new_rhs1, old_rhss1 in map.items():
+                if (lhs.label, new_rhs1, rhs2.label) in visited:
+                    continue
+                if not rhs1.label in old_rhss1:
+                    continue
+
+                visited.add((lhs.label, new_rhs1, rhs2.label))
+                new_complex_rules.append((lhs, Symbol(new_rhs1), rhs2))
+        self.complex_rules = new_complex_rules
+
     @staticmethod
     def read_from_pocr_cnf_file(path: Union[Path, str]) -> "CnfGrammarTemplate":
         """
