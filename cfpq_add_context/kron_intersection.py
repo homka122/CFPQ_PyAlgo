@@ -707,13 +707,18 @@ class CFGIntersection:
         new_binary_rules: list[tuple[_Sym, _Sym, _Sym]] = []
         for lhs, rhs1, rhs2 in self.binary_rules:
             if rhs1.is_term:
+                # if rhs1.term_label.startswith("("):
+                #     rhs1.term_label = "(i"
+                # if rhs1.term_label.startswith(")"):
+                #     rhs1.term_label = ")i"
+
                 s = f"S_{lhs.rsm_state}_{lhs.depth} {rhs1} S_{rhs2.rsm_state}_{rhs2.depth}"
                 if s in triples:
                     continue
                 triples.add(s)
                 new_binary_rules.append((lhs, rhs1, rhs2))
             else:
-                s =f"S_{lhs.rsm_state}_{lhs.depth} S_{rhs1.rsm_state}_{rhs1.depth} S_{rhs2.rsm_state}_{rhs2.depth}"
+                s = f"S_{lhs.rsm_state}_{lhs.depth} S_{rhs1.rsm_state}_{rhs1.depth} S_{rhs2.rsm_state}_{rhs2.depth}"
                 if s in triples:
                     continue
                 triples.add(s)
@@ -750,7 +755,7 @@ class CFGIntersection:
         rules += "\n\nCount:\n"
         rules += f"{self.start}\n"
         return rules
-    
+
     def to_text_groups(self) -> str:
         lines: List[str] = []
         for lhs, rhs1, rhs2 in self.iter_rules():
@@ -760,14 +765,14 @@ class CFGIntersection:
             if rhs2:
                 rhs2 = f"S_{rhs2.rsm_state}_G{rhs2.depth}"
             if rhs1 is None:
-                lines.append(f"{lhs} ->")
+                lines.append(f"{lhs}")
             elif rhs2 is None:
-                lines.append(f"{lhs} -> {rhs1}")
+                lines.append(f"{lhs}\t{rhs1}")
             else:
-                lines.append(f"{lhs} -> {rhs1} {rhs2}")
+                lines.append(f"{lhs}\t{rhs1}\t{rhs2}")
         rules = "\n".join(lines)
         rules += "\n\nCount:\n"
-        rules += f"{self.start}\n"
+        rules += f"S_{self.start.rsm_state}_G{self.start.depth}\n"
         return rules
 
     def __repr__(self) -> str:
@@ -911,11 +916,12 @@ def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
         cfg.add_epsilon_rule(state)
 
     print(cfg.to_text())
-    w_cfg(cfg.to_text())
+    # w_cfg(cfg.to_text())
     old_size = cfg.get_rules_count()
     cfg.group_by_automata_column()
     print("===================")
     print(cfg.to_text_groups())
+    w_cfg(cfg.to_text_groups())
     print("===============")
     print(f"DIFF: {cfg.get_rules_count()}/{old_size}, compression: {cfg.get_rules_count()/old_size}")
 
