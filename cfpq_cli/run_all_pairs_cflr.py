@@ -15,6 +15,7 @@ from cfpq_model.cnf_grammar_template import CnfGrammarTemplate
 from cfpq_model.label_decomposed_graph import LabelDecomposedGraph
 from cfpq_add_context.add_contexts import add_context, normalize
 from cfpq_add_context.utils import verify
+from cfpq_add_context.kron_intersection import generate_intersection_cfg
 
 import graphblas
 
@@ -29,16 +30,29 @@ def run_all_pairs_cflr(
         expected_path: str = "",
         max_num_of_contexts = 30,
         trace_graphblas = False,
+        homka_num_contexts = None,
+        homka_depth = None,
+        homka_generate_grammar = None,
+        homka_num_fields = None,
         depth=1,
 ):
     if trace_graphblas: graphblas.ss.burble.enable()
     total_start = time()
     algo = get_all_pairs_cfl_reachability_algo(algo_name)
+    if homka_generate_grammar is not None:
+        if homka_num_contexts is None or homka_depth is None:
+            raise ValueError("homka_num_contexts and homka_depth must be specified when homka_generate_grammar is specified")
+        context_num = homka_num_contexts
+        depth = homka_depth
+        num_fields = homka_num_fields
+        grammar = generate_intersection_cfg(context_num, depth, num_fields).to_cnf_template()
+    else:
+        grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
+
     if add_contexts:
         graph,initial_graph_nvertices = add_context(graph_path, max_num_of_contexts,depth)
     else:
-        graph = LabelDecomposedGraph.read_from_pocr_graph_file(graph_path)
-    grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
+        graph = LabelDecomposedGraph.read_from_pocr_graph_file(graph_path, context_num, depth)
     graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
     try:
         with time_limit(time_limit_sec):
@@ -111,6 +125,16 @@ def main(raw_args: List[str]):
     parser.add_argument('--expected_path', dest='expected_path', default="",
                         help='If specified, it will be checked wether solver\'s result is overapproximation of represented in the file.'
                         )
+    parser.add_argument('--homka-generate-grammar', dest='homka_generate_grammar', default=None, type=bool,
+                        help='Specifies whether grammar should be generated')
+    parser.add_argument('--homka-num-contexts', dest='homka_num_contexts', default=None, type=int,
+                        help='Number of contexts in generated CFG'
+                        )
+    parser.add_argument('--homka-depth', dest='homka_depth', default=None, type=int,
+                        help='Max depth of contexts in generated CFG'
+                        )
+    parser.add_argument('--homka-num-fields', dest='homka_num_fields', default=None, type=int,
+                        help='Number of fields in generated CFG')
     settings_manager = AlgoSettingsManager()
     settings_manager.add_args(parser)
     args = parser.parse_args(raw_args)
@@ -125,6 +149,10 @@ def main(raw_args: List[str]):
         out_path=args.out,
         max_num_of_contexts=args.max_num_of_contexts,
         depth = args.depth,
+        homka_num_contexts=args.homka_num_contexts,
+        homka_depth=args.homka_depth,
+        homka_generate_grammar=args.homka_generate_grammar,
+        homka_num_fields=args.homka_num_fields,
         settings=settings_manager.read_args(args)
     )
     settings_manager.report_unused()
