@@ -743,6 +743,30 @@ class CFGIntersection:
 
         return result
 
+    def to_cnf_template(self) -> CnfGrammarTemplate:
+        start_nonterm = Symbol(f"S_{self.start.rsm_state}_G{self.start.depth}")
+        complex_rules: list[tuple[Symbol, Symbol, Symbol]] = []
+        term_rules: list[tuple[Symbol, Symbol]] = []
+        epsilon_rules: list[Symbol] = []
+        for lhs, rhs1, rhs2 in self.iter_rules():
+            lhs = Symbol(f"S_{lhs.rsm_state}_G{lhs.depth}")
+            if rhs1:
+                if not rhs1.is_term:
+                    rhs1 = Symbol(f"S_{rhs1.rsm_state}_G{rhs1.depth}")
+                else:
+                    rhs1 = Symbol(rhs1.term_label)
+            if rhs2:
+                rhs2 = Symbol(f"S_{rhs2.rsm_state}_G{rhs2.depth}")
+            
+            if rhs1 is None and rhs2 is None:
+                epsilon_rules.append(lhs)
+            elif rhs2 is None:
+                term_rules.append((lhs, rhs1))
+            else:
+                complex_rules.append((lhs, rhs1, rhs2))
+                
+        return CnfGrammarTemplate(start_nonterm, epsilon_rules, term_rules, complex_rules)
+
     def to_text(self) -> str:
         lines: List[str] = []
         for lhs, rhs in self.simple_rules:
@@ -779,8 +803,7 @@ class CFGIntersection:
         return f"CFGIntersection(start={self.start}, rules={len(self.simple_rules) + len(self.binary_rules)})"
 
 
-def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
-    print(f"depth: {AUTOMATA_DEPTH}, num contexts: {AUTOMATA_CONTEXT_NUM}, fields num: {RSM_FIELDS_NUM}\n\t", end="")
+def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM) -> CFGIntersection:
     automata = Automata()
     rsm = PointsToRSM(RSM_FIELDS_NUM)
 
@@ -915,6 +938,21 @@ def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
     for state in final_state:
         cfg.add_epsilon_rule(state)
 
+    file.close()
+    box_file.close()
+
+    return cfg
+
+
+def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
+    print(f"depth: {AUTOMATA_DEPTH}, num contexts: {AUTOMATA_CONTEXT_NUM}, fields num: {RSM_FIELDS_NUM}\n\t", end="")
+    cfg_file = open(f"grammars/grammar_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.cnf", mode="w")
+
+    def w_cfg(text):
+        print(text, file=cfg_file)
+
+    cfg = generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM)
+
     print(cfg.to_text())
     # w_cfg(cfg.to_text())
     old_size = cfg.get_rules_count()
@@ -925,86 +963,86 @@ def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
     print("===============")
     print(f"DIFF: {cfg.get_rules_count()}/{old_size}, compression: {cfg.get_rules_count()/old_size}")
 
-    countMapLeft: dict[str, int] = {}
-    countMapRight: dict[str, int] = {}
-    numOfGState = 1
-    for i in range(AUTOMATA_DEPTH + 1):
-        numOfGState += AUTOMATA_CONTEXT_NUM**i
+    # countMapLeft: dict[str, int] = {}
+    # countMapRight: dict[str, int] = {}
+    # numOfGState = 1
+    # for i in range(AUTOMATA_DEPTH + 1):
+    # numOfGState += AUTOMATA_CONTEXT_NUM**i
     # print(numOfGState)
-    skipped = 0
-    rhs1BanList1 = (
-        [f"({i+1}" for i in range(AUTOMATA_CONTEXT_NUM)] + [f"){i+1}" for i in range(AUTOMATA_CONTEXT_NUM)] + [f"Alias_{i}" for i in range(numOfGState)]
-    )
-    rhs1BanList2 = (
-        ["alloc", "assign", "alloc_r", "assign_r"]
-        + [f"load_f{i+1}" for i in range(RSM_FIELDS_NUM)]
-        + [f"load_f{i+1}_r" for i in range(RSM_FIELDS_NUM)]
-        + [f"store_f{i+1}" for i in range(RSM_FIELDS_NUM)]
-        + [f"store_f{i+1}_r" for i in range(RSM_FIELDS_NUM)]
-    )
-    rhs2BanList1 = [f"PointsTo_{i}" for i in range(numOfGState)] + [f"S_3_{i}" for i in range(numOfGState)]
-    pairs: set[tuple[str, str, str]] = set()
-    new_rules = []
-    for lhs, rhs1, rhs2 in rules:
-        break
-        rsm_label, automata_depth = (lhs.split("_")[1]), (lhs.split("G(")[1].split(" ")[0])
-        if (rsm_label, automata_depth, rhs1) in pairs:
-            skipped += 1
-            continue
+    # skipped = 0
+    # rhs1BanList1 = (
+    #     [f"({i+1}" for i in range(AUTOMATA_CONTEXT_NUM)] + [f"){i+1}" for i in range(AUTOMATA_CONTEXT_NUM)] + [f"Alias_{i}" for i in range(numOfGState)]
+    # )
+    # rhs1BanList2 = (
+    #     ["alloc", "assign", "alloc_r", "assign_r"]
+    #     + [f"load_f{i+1}" for i in range(RSM_FIELDS_NUM)]
+    #     + [f"load_f{i+1}_r" for i in range(RSM_FIELDS_NUM)]
+    #     + [f"store_f{i+1}" for i in range(RSM_FIELDS_NUM)]
+    #     + [f"store_f{i+1}_r" for i in range(RSM_FIELDS_NUM)]
+    # )
+    # rhs2BanList1 = [f"PointsTo_{i}" for i in range(numOfGState)] + [f"S_3_{i}" for i in range(numOfGState)]
+    # pairs: set[tuple[str, str, str]] = set()
+    # new_rules = []
+    # for lhs, rhs1, rhs2 in rules:
+    #     break
+    #     rsm_label, automata_depth = (lhs.split("_")[1]), (lhs.split("G(")[1].split(" ")[0])
+    #     if (rsm_label, automata_depth, rhs1) in pairs:
+    #         skipped += 1
+    #         continue
 
-        pairs.add((rsm_label, automata_depth, rhs1))
+    #     pairs.add((rsm_label, automata_depth, rhs1))
 
-        if rhs1.startswith("(") or rhs1.startswith(")"):
-            if (rsm_label, automata_depth, rhs1) in pairs:
-                skipped += 1
-                continue
+    #     if rhs1.startswith("(") or rhs1.startswith(")"):
+    #         if (rsm_label, automata_depth, rhs1) in pairs:
+    #             skipped += 1
+    #             continue
 
-            if automata_depth == 3:
-                new_rules.append(f"S_{rsm_label}_G{automata_depth} -> {rhs1} S_{rsm_label}_G{int(automata_depth)}")
-                pairs.add((rsm_label, automata_depth, rhs1))
-                continue
+    #         if automata_depth == 3:
+    #             new_rules.append(f"S_{rsm_label}_G{automata_depth} -> {rhs1} S_{rsm_label}_G{int(automata_depth)}")
+    #             pairs.add((rsm_label, automata_depth, rhs1))
+    #             continue
 
-            if automata_depth == 0 and rhs1.startswith(")"):
-                new_rules.append(f"{lhs} -> {rhs1} {rhs2}")
-                continue
+    #         if automata_depth == 0 and rhs1.startswith(")"):
+    #             new_rules.append(f"{lhs} -> {rhs1} {rhs2}")
+    #             continue
 
-            pairs.add((rsm_label, automata_depth, rhs1))
-            if rhs1.startswith("("):
-                new_rules.append(f"S_{rsm_label}_G{automata_depth} -> {rhs1} S_{rsm_label}_G{int(automata_depth) + 1}")
-            else:
-                new_rules.append(f"S_{rsm_label}_G{int(automata_depth) + 1} -> {rhs1} S_{rsm_label}_G{automata_depth}")
-            continue
+    #         pairs.add((rsm_label, automata_depth, rhs1))
+    #         if rhs1.startswith("("):
+    #             new_rules.append(f"S_{rsm_label}_G{automata_depth} -> {rhs1} S_{rsm_label}_G{int(automata_depth) + 1}")
+    #         else:
+    #             new_rules.append(f"S_{rsm_label}_G{int(automata_depth) + 1} -> {rhs1} S_{rsm_label}_G{automata_depth}")
+    #         continue
 
-        # if rhs1 in rhs1BanList1:
-        #     skipped += 1
-        #     continue
-        # if rhs2 in rhs2BanList1:
-        #     skipped += 1
-        #     continue
-        # if rhs1 in rhs1BanList2:
-        #     skipped += 1
-        #     continue
-        if rhs1 not in countMapLeft:
-            countMapLeft[rhs1] = 0
-        if rhs2 not in countMapRight:
-            countMapRight[rhs2] = 0
-        countMapLeft[rhs1] += 1
-        countMapRight[rhs2] += 1
-        new_rules.append(f"{lhs} -> {rhs1} {rhs2}")
-    # skipped -= len(rhs1BanList1)
-    # skipped -= len(rhs2BanList1)
-    # skipped -= len(rhs1BanList2)
-    print("Count of rhs in left in rules or desc order:")
-    for rhs, count in sorted(countMapLeft.items(), key=lambda x: x[1], reverse=True):
-        print(f"{rhs}: {count}")
-    print("Count of rhs in right in rules or desc order:")
-    for rhs, count in sorted(countMapRight.items(), key=lambda x: x[1], reverse=True):
-        print(f"{rhs}: {count}")
+    #     # if rhs1 in rhs1BanList1:
+    #     #     skipped += 1
+    #     #     continue
+    #     # if rhs2 in rhs2BanList1:
+    #     #     skipped += 1
+    #     #     continue
+    #     # if rhs1 in rhs1BanList2:
+    #     #     skipped += 1
+    #     #     continue
+    #     if rhs1 not in countMapLeft:
+    #         countMapLeft[rhs1] = 0
+    #     if rhs2 not in countMapRight:
+    #         countMapRight[rhs2] = 0
+    #     countMapLeft[rhs1] += 1
+    #     countMapRight[rhs2] += 1
+    #     new_rules.append(f"{lhs} -> {rhs1} {rhs2}")
+    # # skipped -= len(rhs1BanList1)
+    # # skipped -= len(rhs2BanList1)
+    # # skipped -= len(rhs1BanList2)
+    # print("Count of rhs in left in rules or desc order:")
+    # for rhs, count in sorted(countMapLeft.items(), key=lambda x: x[1], reverse=True):
+    #     print(f"{rhs}: {count}")
+    # print("Count of rhs in right in rules or desc order:")
+    # for rhs, count in sorted(countMapRight.items(), key=lambda x: x[1], reverse=True):
+    #     print(f"{rhs}: {count}")
 
-    for rule in new_rules:
-        print(rule)
+    # for rule in new_rules:
+    #     print(rule)
 
-    print(f"Compression: {(len(rules) - skipped)/(len(rules))}. (Skipped: {skipped}, all: {len(rules)}, rules now: {len(rules)-skipped})")
+    # print(f"Compression: {(len(rules) - skipped)/(len(rules))}. (Skipped: {skipped}, all: {len(rules)}, rules now: {len(rules)-skipped})")
 
     # w("subgraph cluster3 {")
     # w(f'label="intersection FSM and RSM (before BFS)"')
@@ -1053,21 +1091,22 @@ def mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM):
     # w("}")
     # w("}")
 
-    file.close()
-    box_file.close()
+    # file.close()
+    # box_file.close()
     cfg_file.close()
 
 
-if False:
-    AUTOMATA_CONTEXT_NUM_MAX = 2
-    AUTOMATA_DEPTH_MAX = 2
-    RSM_FIELDS_NUM_MAX = 2
-    for AUTOMATA_CONTEXT_NUM in range(1, AUTOMATA_CONTEXT_NUM_MAX + 1):
-        for AUTOMATA_DEPTH in range(1, AUTOMATA_DEPTH_MAX + 1):
-            for RSM_FIELDS_NUM in range(1, RSM_FIELDS_NUM_MAX + 1):
-                mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM)
-else:
-    AUTOMATA_CONTEXT_NUM = 1
-    AUTOMATA_DEPTH = 1
-    RSM_FIELDS_NUM = 2
-    mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM)
+if __name__ == "__main__":
+    if False:
+        AUTOMATA_CONTEXT_NUM_MAX = 2
+        AUTOMATA_DEPTH_MAX = 2
+        RSM_FIELDS_NUM_MAX = 2
+        for AUTOMATA_CONTEXT_NUM in range(1, AUTOMATA_CONTEXT_NUM_MAX + 1):
+            for AUTOMATA_DEPTH in range(1, AUTOMATA_DEPTH_MAX + 1):
+                for RSM_FIELDS_NUM in range(1, RSM_FIELDS_NUM_MAX + 1):
+                    mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM)
+    else:
+        AUTOMATA_CONTEXT_NUM = 1
+        AUTOMATA_DEPTH = 1
+        RSM_FIELDS_NUM = 2
+        mytest(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM)
