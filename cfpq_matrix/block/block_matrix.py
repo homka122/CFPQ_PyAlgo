@@ -31,6 +31,8 @@ class CellBlockMatrix(BlockMatrix):
         super().__init__(base, block_matrix_space)
 
     def mxm(self, other: OptimizedMatrix, op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
+        assert isinstance(other, BlockMatrix)
+        assert self.block_matrix_space.cell_shape[1] == other.block_matrix_space.cell_shape[0]
         if self.block_matrix_space.is_single_cell(other.shape):
             return self.base.mxm(other, op, swap_operands=swap_operands)
         return self.base.mxm(
@@ -44,10 +46,14 @@ class CellBlockMatrix(BlockMatrix):
         )
 
     def rsub(self, other: OptimizedMatrix, op: Callable[["OptimizedMatrix", "OptimizedMatrix"], "OptimizedMatrix"]) -> OptimizedMatrix:
+        assert isinstance(other, BlockMatrix)
+        assert self.block_matrix_space.cell_shape == other.block_matrix_space.cell_shape
         assert self.block_matrix_space.is_single_cell(other.shape)
         return self.base.rsub(other, op)
 
     def iadd(self, other: OptimizedMatrix, op: Monoid):
+        assert isinstance(other, BlockMatrix)
+        assert self.block_matrix_space.cell_shape == other.block_matrix_space.cell_shape
         self.base.iadd(MatrixToOptimizedAdapter(self.block_matrix_space.reduce_hyper_vector_or_cell(other.to_unoptimized(), op)), op)
 
     def __sizeof__(self):
@@ -78,6 +84,8 @@ class VectorBlockMatrix(BlockMatrix):
         return self.matrices[desired_orientation]
 
     def mxm(self, other: OptimizedMatrix, op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
+        assert isinstance(other, BlockMatrix)
+        assert self.block_matrix_space.cell_shape[1] == other.block_matrix_space.cell_shape[0]
         if self.block_matrix_space.is_single_cell(other.shape):
             return self._force_init_orientation(BlockMatrixOrientation.HORIZONTAL if swap_operands else BlockMatrixOrientation.VERTICAL).mxm(
                 other, op, swap_operands=swap_operands
@@ -87,6 +95,8 @@ class VectorBlockMatrix(BlockMatrix):
         )
 
     def rsub(self, other: OptimizedMatrix, op: Callable[["OptimizedMatrix", "OptimizedMatrix"], "OptimizedMatrix"]) -> OptimizedMatrix:
+        assert isinstance(other, BlockMatrix)
+        assert self.block_matrix_space.cell_shape == other.block_matrix_space.cell_shape
         if self.block_matrix_space.get_block_matrix_orientation(other.shape) not in self.matrices:
             my_shape = next(self.matrices.keys().__iter__())
             other = MatrixToOptimizedAdapter(self.block_matrix_space.hyper_rotate(other.to_unoptimized(), my_shape))
@@ -94,6 +104,8 @@ class VectorBlockMatrix(BlockMatrix):
         return self.matrices[other_shape].rsub(other, op)
 
     def iadd(self, other: OptimizedMatrix, op: Monoid):
+        assert isinstance(other, BlockMatrix)
+        assert self.block_matrix_space.cell_shape == other.block_matrix_space.cell_shape
         if self.block_matrix_space.is_single_cell(other.shape):
             other = MatrixToOptimizedAdapter(self.block_matrix_space.repeat_into_hyper_column(other.to_unoptimized()))
         for orientation, m in self.matrices.items():

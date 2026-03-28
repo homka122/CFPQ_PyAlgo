@@ -43,6 +43,11 @@ class BlockMatrixSpace(ABC):
     def block_count(self) -> int:
         pass
 
+    @property
+    @abstractmethod
+    def cell_shape(self) -> Tuple[int, int]:
+        pass
+
     @abstractmethod
     def automize_block_operations(self, base: "OptimizedMatrix") -> OptimizedMatrix:
         pass
