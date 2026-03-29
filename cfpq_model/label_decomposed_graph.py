@@ -69,6 +69,11 @@ class LabelDecomposedGraph:
 
         self.matrices[Symbol("(i")] = graphblas.ss.concat(tiles_open)
         self.matrices[Symbol(")i")] = graphblas.ss.concat(tiles_close)
+        for i in range(self.contexts_num):
+            if Symbol(f"({i}") in self.matrices:
+                del self.matrices[Symbol(f"({i}")]
+            if Symbol(f"){i}") in self.matrices:
+                del self.matrices[Symbol(f"){i}")]
 
     @staticmethod
     def read_from_pocr_graph_file(path: Union[Path, str], contexts_num: int, depth: int) -> "LabelDecomposedGraph":
