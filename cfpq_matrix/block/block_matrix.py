@@ -34,7 +34,7 @@ class CellBlockMatrix(BlockMatrix):
         assert isinstance(other, BlockMatrix)
         assert self.block_matrix_space.cell_shape[1] == other.block_matrix_space.cell_shape[0]
         if self.block_matrix_space.is_single_cell(other.shape):
-            return self.base.mxm(other, op, swap_operands=swap_operands)
+            return self.base.mxm(other.base, op, swap_operands=swap_operands)
         return self.base.mxm(
             MatrixToOptimizedAdapter(
                 self.block_matrix_space.hyper_rotate(
@@ -49,7 +49,7 @@ class CellBlockMatrix(BlockMatrix):
         assert isinstance(other, BlockMatrix)
         assert self.block_matrix_space.cell_shape == other.block_matrix_space.cell_shape
         assert self.block_matrix_space.is_single_cell(other.shape)
-        return self.base.rsub(other, op)
+        return self.base.rsub(other.base, op)
 
     def iadd(self, other: OptimizedMatrix, op: Monoid):
         assert isinstance(other, BlockMatrix)
