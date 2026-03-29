@@ -5,7 +5,7 @@ from graphblas.core.vector import Vector
 from graphblas.core.operator import Semiring, Monoid, SelectOp
 from graphblas.core.dtypes import UINT64
 from graphblas import op, semiring
-import cfpq_add_context.gen_automata
+from cfpq_add_context import gen_automata, labels
 import time
 
 import cfpq_add_context.labels
@@ -92,90 +92,90 @@ def intersection(graph, automata, is_log=False):
     return result
 
 
-def test():
-    graph_edges = [(0, 0, (labels.mk_open_context(1)))]
-    automata = gen_automata.generate(2)
+# def test():
+#     graph_edges = [(0, 0, (labels.mk_open_context(1)))]
+#     automata = gen_automata.generate(2)
 
-    graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=1, ncols=1, name="graph")
+#     graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=1, ncols=1, name="graph")
 
-    i = intersection(graph, automata)
-
-
-def test2():
-    graph_edges = [(0, 0, (labels.mk_open_context(1))), (0, 1, (labels.mk_open_context(1))), (1, 1, (labels.mk_close_context(1)))]
-    automata = gen_automata.generate(2)
-
-    graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=2, ncols=2, name="graph")
-
-    i = intersection(graph, automata)
+#     i = intersection(graph, automata)
 
 
-def test3():
-    graph_edges = [(0, 1, (labels.mk_open_context(1))), (1, 2, (labels.mk_close_context(1)))]
-    automata = gen_automata.generate(2)
+# def test2():
+#     graph_edges = [(0, 0, (labels.mk_open_context(1))), (0, 1, (labels.mk_open_context(1))), (1, 1, (labels.mk_close_context(1)))]
+#     automata = gen_automata.generate(2)
 
-    graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=3, ncols=3, name="graph")
+#     graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=2, ncols=2, name="graph")
 
-    i = intersection(graph, automata)
-
-
-def test4():
-    graph_edges = [
-        (0, 1, (labels.mk_open_context(1))),
-        (1, 2, (labels.mk_close_context(1))),
-        (0, 3, (labels.mk_open_context(2))),
-        (3, 2, (labels.mk_close_context(2))),
-    ]
-    automata = gen_automata.generate(2)
-
-    graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=4, ncols=4, name="graph")
-
-    i = intersection(graph, automata)
+#     i = intersection(graph, automata)
 
 
-def test5():
-    graph_edges = [
-        (0, 1, (labels.mk_open_context(1))),
-        (1, 2, (labels.mk_open_context(2))),
-        (2, 3, (labels.mk_close_context(2))),
-        (3, 4, (labels.mk_close_context(1))),
-    ]
-    automata = gen_automata.generate(2)
+# def test3():
+#     graph_edges = [(0, 1, (labels.mk_open_context(1))), (1, 2, (labels.mk_close_context(1)))]
+#     automata = gen_automata.generate(2)
 
-    graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=5, ncols=5, name="graph")
+#     graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=3, ncols=3, name="graph")
 
-    i = intersection(graph, automata)
+#     i = intersection(graph, automata)
 
 
-def test6():
-    graph_edges = [
-        (0, 1, (labels.mk_open_context(1))),
-        (1, 2, (labels.mk_other(1))),
-        (2, 3, (labels.mk_close_context(1))),
-        (4, 1, (labels.mk_open_context(2))),
-        (2, 5, (labels.mk_close_context(2))),
-    ]
-    automata = gen_automata.generate(2)
+# def test4():
+#     graph_edges = [
+#         (0, 1, (labels.mk_open_context(1))),
+#         (1, 2, (labels.mk_close_context(1))),
+#         (0, 3, (labels.mk_open_context(2))),
+#         (3, 2, (labels.mk_close_context(2))),
+#     ]
+#     automata = gen_automata.generate(2)
 
-    graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=6, ncols=6, name="graph")
+#     graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=4, ncols=4, name="graph")
 
-    i = intersection(graph, automata)
+#     i = intersection(graph, automata)
 
 
-def test7():
-    graph_edges = [
-        (0, 1, (labels.mk_open_context(1))),
-        (1, 2, (labels.mk_other(1))),
-        (2, 3, (labels.mk_close_context(1))),
-        (4, 1, (labels.mk_open_context(2))),
-        (2, 5, (labels.mk_close_context(2))),
-        (3, 4, (labels.mk_other(2))),
-    ]
-    automata = gen_automata.generate(2)
+# def test5():
+#     graph_edges = [
+#         (0, 1, (labels.mk_open_context(1))),
+#         (1, 2, (labels.mk_open_context(2))),
+#         (2, 3, (labels.mk_close_context(2))),
+#         (3, 4, (labels.mk_close_context(1))),
+#     ]
+#     automata = gen_automata.generate(2)
 
-    graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=7, ncols=7, name="graph")
+#     graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=5, ncols=5, name="graph")
 
-    i = intersection(graph, automata)
+#     i = intersection(graph, automata)
+
+
+# def test6():
+#     graph_edges = [
+#         (0, 1, (labels.mk_open_context(1))),
+#         (1, 2, (labels.mk_other(1))),
+#         (2, 3, (labels.mk_close_context(1))),
+#         (4, 1, (labels.mk_open_context(2))),
+#         (2, 5, (labels.mk_close_context(2))),
+#     ]
+#     automata = gen_automata.generate(2)
+
+#     graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=6, ncols=6, name="graph")
+
+#     i = intersection(graph, automata)
+
+
+# def test7():
+#     graph_edges = [
+#         (0, 1, (labels.mk_open_context(1))),
+#         (1, 2, (labels.mk_other(1))),
+#         (2, 3, (labels.mk_close_context(1))),
+#         (4, 1, (labels.mk_open_context(2))),
+#         (2, 5, (labels.mk_close_context(2))),
+#         (3, 4, (labels.mk_other(2))),
+#     ]
+#     automata = gen_automata.generate(2)
+
+#     graph = Matrix.from_edgelist(graph_edges, dtype=UINT64, nrows=7, ncols=7, name="graph")
+
+#     i = intersection(graph, automata)
 
 
 def test8():
