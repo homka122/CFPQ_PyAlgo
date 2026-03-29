@@ -218,12 +218,16 @@ class OptimizedLabelDecomposedGraph:
             #     depth=PointsToMatrix.get_depth_from_symbol(symbol.label),
             # )
             type = PointsToMatrix.get_type_from_symbol(symbol.label)
-            if type == "State":
-                depth_local = PointsToMatrix.get_depth_from_symbol(symbol.label)
-            else:
-                depth_local = 1
+            depth_local = PointsToMatrix.get_depth_from_symbol(symbol.label)
+            # if type == "State":
+            #     depth_local = PointsToMatrix.get_depth_from_symbol(symbol.label)
+            # else:
+            #     depth_local = 1
             n = unoptimized_graph.vertex_count
-            new_block_space = BlockMatrixSpaceImpl((n, n**depth_local), unoptimized_graph.block_matrix_space.block_count)
+            new_block_space_size = (n, n * (unoptimized_graph.contexts_num**depth_local))
+            if symbol == Symbol(")i"):
+                new_block_space_size = (n * (unoptimized_graph.contexts_num**depth_local), n)
+            new_block_space = BlockMatrixSpaceImpl(new_block_space_size, unoptimized_graph.block_matrix_space.block_count)
             optimized_graph.matrices[symbol] = PointsToMatrix(
                 base=new_block_space.automize_block_operations(MatrixToOptimizedAdapter(matrix)),
                 type=type,
@@ -339,14 +343,14 @@ class OptimizedLabelDecomposedGraph:
                         self.contexts_num,
                         PointsToMatrix.get_depth_from_symbol(lhs.label),
                     )
-                # elif leftrhs.label.startswith("(") and PointsToMatrix.get_depth_from_symbol(lhs.label) == self.depth:
-                # mxm = PointsToMatrix(
-                # (PointsToMatrix.get_hyper_row(mxm, self.contexts_num**self.depth)),
-                # "State",
-                # self.vertex_count,
-                # self.contexts_num,
-                # PointsToMatrix.get_depth_from_symbol(lhs.label),
-                # )
+                elif leftrhs.label.startswith("(") and PointsToMatrix.get_depth_from_symbol(lhs.label) == self.depth:
+                    mxm = PointsToMatrix(
+                    (PointsToMatrix.get_hyper_row(mxm, self.contexts_num**self.depth, vertex_count=self.vertex_count)),
+                    "State",
+                    self.vertex_count,
+                    self.contexts_num,
+                    PointsToMatrix.get_depth_from_symbol(lhs.label),
+                    )
                 else:
                     mxm = PointsToMatrix(
                         BlockMatrixSpaceImpl(mxm.shape, 1).automize_block_operations(mxm),
@@ -370,17 +374,23 @@ class OptimizedLabelDecomposedGraph:
 
         type = PointsToMatrix.get_type_from_symbol(symbol.label)
         depth_local = PointsToMatrix.get_depth_from_symbol(symbol.label)
-
-        nrows = self.vertex_count
-        if depth_local == self.depth + 1:
+        
+        if type == "State":
+            nrows = self.vertex_count
+            if depth_local == self.depth + 1:
+                ncols = self.vertex_count
+            else:
+                ncols = self.vertex_count * (self.contexts_num**depth_local)
+        elif type == "RSM":
+            nrows = self.vertex_count
             ncols = self.vertex_count
         else:
-            ncols = self.vertex_count * (self.contexts_num**depth_local)
-
-        if symbol.label == "(i":
-            ncols = self.vertex_count * (self.contexts_num)
-        if symbol.label == ")i":
-            nrows = self.vertex_count * (self.contexts_num)
+            if symbol.label == "(i":
+                nrows = self.vertex_count
+                ncols = self.vertex_count * (self.contexts_num)
+            else:
+                nrows = self.vertex_count * (self.contexts_num)
+                ncols = self.vertex_count
 
         base = MatrixToOptimizedAdapter(Matrix(self.dtype, nrows, ncols, name=symbol.label))
         block_space = BlockMatrixSpaceImpl((nrows, ncols), self.block_matrix_space.block_count)
