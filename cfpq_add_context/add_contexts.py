@@ -170,7 +170,10 @@ def to_label_decomposed_graph(graph, automata_size, initial_graph_size, is_log=F
     matrices[Symbol("load_r_i")] = boolean_decompose_load_r
 
     return LabelDecomposedGraph(
-        vertex_count=vertex_count, block_matrix_space=BlockMatrixSpaceImpl(n=vertex_count, block_count=block_count), dtype=BOOL, matrices=matrices
+        vertex_count=vertex_count,
+        block_matrix_space=BlockMatrixSpaceImpl(cell_shape == (vertex_count, vertex_count), block_count=block_count),
+        dtype=BOOL,
+        matrices=matrices,
     )
 
 
