@@ -31,13 +31,7 @@ class AllPairsCflrToolRunner(ABC):
 
 
 class AbstractAllPairsCflrToolRunner(AllPairsCflrToolRunner, ABC):
-    def __init__(
-            self,
-            algo_settings: str,
-            graph_path: Path,
-            grammar_path: Path,
-            timout_sec: Optional[int]
-    ):
+    def __init__(self, algo_settings: str, graph_path: Path, grammar_path: Path, timout_sec: Optional[int]):
         self.algo_settings = algo_settings
         self.graph_path = graph_path
         self.grammar_path = grammar_path
@@ -50,7 +44,7 @@ class AbstractAllPairsCflrToolRunner(AllPairsCflrToolRunner, ABC):
 
     @property
     def timeout_command(self) -> str:
-        return '' if self.timeout_sec is None else f'timeout --kill-after=3m {self.timeout_sec}s '
+        return "" if self.timeout_sec is None else f"timeout --kill-after=3m {self.timeout_sec}s "
 
     @property
     def measure_ram_command(self) -> str:
@@ -60,13 +54,7 @@ class AbstractAllPairsCflrToolRunner(AllPairsCflrToolRunner, ABC):
         if self.base_command is None:
             raise IncompatibleCflrToolError()
         process = subprocess.run(
-            shlex.split(
-                self.measure_ram_command + self.timeout_command + self.base_command
-            ),
-            cwd=self.work_dir,
-            stdout=subprocess.PIPE,
-            text=True,
-            check=True
+            shlex.split(self.measure_ram_command + self.timeout_command + self.base_command), cwd=self.work_dir, stdout=subprocess.PIPE, text=True, check=True
         )
         return self.safe_parse_results(process)
 
@@ -74,10 +62,7 @@ class AbstractAllPairsCflrToolRunner(AllPairsCflrToolRunner, ABC):
         try:
             return self.parse_results(process)
         except Exception as exc:
-            print(
-                "   Failed to parse results\n"
-                "   (interpreting as incompatible CFL-r tool error)"
-            )
+            print("   Failed to parse results\n" "   (interpreting as incompatible CFL-r tool error)")
             print("=====")
             print("stdout:")
             print(process.stdout)

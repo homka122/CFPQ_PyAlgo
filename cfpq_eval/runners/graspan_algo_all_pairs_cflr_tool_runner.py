@@ -6,10 +6,7 @@ from typing import Optional
 
 import psutil
 
-from cfpq_eval.runners.all_pairs_cflr_tool_runner import (
-    AbstractAllPairsCflrToolRunner,
-    CflrToolRunResult
-)
+from cfpq_eval.runners.all_pairs_cflr_tool_runner import AbstractAllPairsCflrToolRunner, CflrToolRunResult
 from cfpq_model.cnf_grammar_template import CnfGrammarTemplate
 from cfpq_model.label_decomposed_graph import LabelDecomposedGraph
 from cfpq_model.model_utils import explode_indices
@@ -39,15 +36,11 @@ class GraspanAllPairsCflrToolRunner(AbstractAllPairsCflrToolRunner):
         os.makedirs(grammar_path.parent, exist_ok=True)
         grammar.write_to_pocr_cnf_file(grammar_path, include_starting=False)
 
-        return (
-            f'./run {graph_path} {grammar_path} 1 '
-            f'{int(psutil.virtual_memory().total / 10**9 * 0.9)} '
-            f'{os.cpu_count() * 2}'
-        )
+        return f"./run {graph_path} {grammar_path} 1 " f"{int(psutil.virtual_memory().total / 10**9 * 0.9)} " f"{os.cpu_count() * 2}"
 
     @property
     def work_dir(self) -> Optional[Path]:
-        return Path(os.environ['GRASPAN_DIR']) / "src"
+        return Path(os.environ["GRASPAN_DIR"]) / "src"
 
     def parse_results(self, process: subprocess.CompletedProcess[str]) -> CflrToolRunResult:
         final_file = re.search(r"finalFile:\s*(.*)", process.stdout).group(1)
@@ -60,7 +53,5 @@ class GraspanAllPairsCflrToolRunner(AbstractAllPairsCflrToolRunner):
         os.remove(final_file)
 
         return CflrToolRunResult(
-            s_edges=len(s_edges),
-            time_sec=float(re.search(r"COMP TIME:\s*([\d.]+|NaN)", process.stdout).group(1)),
-            ram_kb=self.parse_ram_usage_kb(process)
+            s_edges=len(s_edges), time_sec=float(re.search(r"COMP TIME:\s*([\d.]+|NaN)", process.stdout).group(1)), ram_kb=self.parse_ram_usage_kb(process)
         )

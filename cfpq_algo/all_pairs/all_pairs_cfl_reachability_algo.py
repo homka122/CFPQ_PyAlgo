@@ -15,12 +15,7 @@ class AllPairsCflReachabilityAlgoInstance(ABC):
 
 
 class AllPairsCflReachabilityAlgo(ABC):
-    def solve(
-            self,
-            graph: LabelDecomposedGraph,
-            grammar: CnfGrammarTemplate,
-            settings: List[AlgoSetting]
-    ) -> Matrix:
+    def solve(self, graph: LabelDecomposedGraph, grammar: CnfGrammarTemplate, settings: List[AlgoSetting]) -> Matrix:
         return self._create_instance(graph, grammar, settings).solve()
 
     @property
@@ -29,12 +24,7 @@ class AllPairsCflReachabilityAlgo(ABC):
         pass
 
     @abstractmethod
-    def _create_instance(
-            self,
-            graph: LabelDecomposedGraph,
-            grammar: CnfGrammarTemplate,
-            settings: List[AlgoSetting]
-    ) -> AllPairsCflReachabilityAlgoInstance:
+    def _create_instance(self, graph: LabelDecomposedGraph, grammar: CnfGrammarTemplate, settings: List[AlgoSetting]) -> AllPairsCflReachabilityAlgoInstance:
         """
         Creates algo instance that solves all-pairs CFL-r problem for given graph and grammar.
 

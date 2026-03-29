@@ -88,11 +88,7 @@ class BlockMatrixSpace(ABC):
         pass
 
     def create_space_element(self, typ: DataType, is_vector: bool) -> Matrix:
-        return (
-            self.create_hyper_vector(typ, BlockMatrixOrientation.VERTICAL)
-            if is_vector
-            else self.create_cell(typ)
-        )
+        return self.create_hyper_vector(typ, BlockMatrixOrientation.VERTICAL) if is_vector else self.create_cell(typ)
 
     @abstractmethod
     def stack_into_hyper_column(self, matrices: List[Matrix]) -> Matrix:

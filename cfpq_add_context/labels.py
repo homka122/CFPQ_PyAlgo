@@ -151,8 +151,10 @@ def select_all_pass_op(x, i, j, k):
 def select_all_ret_op(x, i, j, k):
     return x == ALL_CLOSE_CONTEXTS or x == SIGMA_WITHOUT_OPEN_CONTEXTS or x == SIGMA
 
+
 def select_all_sigma_op(x, i, j, k):
     return x == SIGMA or x == SIGMA_WITHOUT_CONTEXTS or x == SIGMA_WITHOUT_OPEN_CONTEXTS
+
 
 SelectOp.register_new("select_alloc", select_alloc_op, lazy=True)
 SelectOp.register_new("select_alloc_r", select_alloc_r_op, lazy=True)

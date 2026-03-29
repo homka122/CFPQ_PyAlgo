@@ -10,18 +10,12 @@ from cfpq_model.model_utils import explode_indices
 
 class PreProcessorSetting(AlgoSetting, ABC):
     @abstractmethod
-    def preprocess(
-        self,
-        graph: LabelDecomposedGraph,
-        grammar: CnfGrammarTemplate
-    ) -> tuple[LabelDecomposedGraph, CnfGrammarTemplate]:
+    def preprocess(self, graph: LabelDecomposedGraph, grammar: CnfGrammarTemplate) -> tuple[LabelDecomposedGraph, CnfGrammarTemplate]:
         pass
 
 
 def preprocess_graph_and_grammar(
-    graph: LabelDecomposedGraph,
-    grammar: CnfGrammarTemplate,
-    algo_settings: List[AlgoSetting]
+    graph: LabelDecomposedGraph, grammar: CnfGrammarTemplate, algo_settings: List[AlgoSetting]
 ) -> tuple[LabelDecomposedGraph, CnfGrammarTemplate]:
     for algo_setting in algo_settings:
         if isinstance(algo_setting, PreProcessorSetting):
@@ -47,24 +41,14 @@ class IndexExplodingPreProcessorSetting(PreProcessorSetting):
         return "explode_indexes"
 
     def add_arg(self, parser: ArgumentParser):
-        parser.add_argument(
-            self.flag_name,
-            dest=self.var_name,
-            default=False,
-            action="store_true",
-            help="Turns off block matrix optimization."
-        )
+        parser.add_argument(self.flag_name, dest=self.var_name, default=False, action="store_true", help="Turns off block matrix optimization.")
 
     def read_arg(self, args: Namespace):
         if args.explode_indexes:
             self.was_specified_by_user = True
             self.is_enabled = True
 
-    def preprocess(
-        self,
-        graph: LabelDecomposedGraph,
-        grammar: CnfGrammarTemplate
-    ) -> tuple[LabelDecomposedGraph, CnfGrammarTemplate]:
+    def preprocess(self, graph: LabelDecomposedGraph, grammar: CnfGrammarTemplate) -> tuple[LabelDecomposedGraph, CnfGrammarTemplate]:
         if not self.is_enabled:
             return graph, grammar
 

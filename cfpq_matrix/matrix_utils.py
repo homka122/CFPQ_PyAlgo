@@ -8,6 +8,7 @@ from graphblas.core.vector import Vector
 from cfpq_matrix.optimized_matrix import OptimizedMatrix
 from cfpq_matrix.matrix_to_optimized_adapter import MatrixToOptimizedAdapter
 
+
 def complimentary_mask(matrix: OptimizedMatrix, mask: OptimizedMatrix) -> OptimizedMatrix:
     matrix_base = matrix.to_unoptimized()
     mask_base = mask.to_unoptimized()

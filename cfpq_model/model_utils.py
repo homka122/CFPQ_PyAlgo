@@ -2,10 +2,7 @@ from cfpq_model.cnf_grammar_template import CnfGrammarTemplate, Symbol
 from cfpq_model.label_decomposed_graph import LabelDecomposedGraph
 
 
-def explode_indices(
-    graph: LabelDecomposedGraph,
-    grammar: CnfGrammarTemplate
-) -> tuple[LabelDecomposedGraph, CnfGrammarTemplate]:
+def explode_indices(graph: LabelDecomposedGraph, grammar: CnfGrammarTemplate) -> tuple[LabelDecomposedGraph, CnfGrammarTemplate]:
     block_matrix_space = graph.block_matrix_space
     block_count = block_matrix_space.block_count
 
@@ -26,7 +23,7 @@ def explode_indices(
             epsilon_rules.append(non_terminal)
 
     simple_rules = []
-    for (non_terminal, terminal) in grammar.simple_rules:
+    for non_terminal, terminal in grammar.simple_rules:
         if non_terminal.is_indexed or terminal.is_indexed:
             for i in range(block_count):
                 simple_rules.append((_index_symbol(non_terminal, i), _index_symbol(terminal, i)))
@@ -34,30 +31,22 @@ def explode_indices(
             simple_rules.append((non_terminal, terminal))
 
     complex_rules = []
-    for (non_terminal, symbol1, symbol2) in grammar.complex_rules:
+    for non_terminal, symbol1, symbol2 in grammar.complex_rules:
         if non_terminal.is_indexed or symbol1.is_indexed or symbol2.is_indexed:
             for i in range(block_count):
-                complex_rules.append((
-                    _index_symbol(non_terminal, i),
-                    _index_symbol(symbol1, i),
-                    _index_symbol(symbol2, i),
-                ))
+                complex_rules.append(
+                    (
+                        _index_symbol(non_terminal, i),
+                        _index_symbol(symbol1, i),
+                        _index_symbol(symbol2, i),
+                    )
+                )
         else:
             complex_rules.append((non_terminal, symbol1, symbol2))
 
     return (
-        LabelDecomposedGraph(
-            vertex_count=graph.vertex_count,
-            block_matrix_space=block_matrix_space,
-            dtype=graph.dtype,
-            matrices=matrices
-        ),
-        CnfGrammarTemplate(
-            start_nonterm=grammar.start_nonterm,
-            epsilon_rules=epsilon_rules,
-            simple_rules=simple_rules,
-            complex_rules=complex_rules
-        )
+        LabelDecomposedGraph(vertex_count=graph.vertex_count, block_matrix_space=block_matrix_space, dtype=graph.dtype, matrices=matrices),
+        CnfGrammarTemplate(start_nonterm=grammar.start_nonterm, epsilon_rules=epsilon_rules, simple_rules=simple_rules, complex_rules=complex_rules),
     )
 
 

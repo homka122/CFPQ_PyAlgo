@@ -6,9 +6,7 @@ from typing import Optional
 
 import pandas as pd
 
-from cfpq_eval.runners.all_pairs_cflr_tool_runner import (
-    AbstractAllPairsCflrToolRunner, CflrToolRunResult
-)
+from cfpq_eval.runners.all_pairs_cflr_tool_runner import AbstractAllPairsCflrToolRunner, CflrToolRunResult
 from cfpq_model.cnf_grammar_template import CnfGrammarTemplate, Symbol
 from cfpq_model.label_decomposed_graph import LabelDecomposedGraph
 from cfpq_model.model_utils import explode_indices
@@ -34,26 +32,28 @@ class LegacyMatrixAllPairsCflrToolRunner(AbstractAllPairsCflrToolRunner):
         return CflrToolRunResult(
             s_edges=int(re.search(r"#(SEdges|CountEdges)\s+(\d+)", process.stdout).group(2)),
             time_sec=float(re.search(r"AnalysisTime\s+([\d.]+)", process.stdout).group(1)),
-            ram_kb=self.parse_ram_usage_kb(process)
+            ram_kb=self.parse_ram_usage_kb(process),
         )
 
     @staticmethod
     def _write_legacy_graph(graph: LabelDecomposedGraph, graph_path: Path) -> None:
-        with open(graph_path, 'w', encoding="utf-8") as output_file:
+        with open(graph_path, "w", encoding="utf-8") as output_file:
             for symbol, matrix in graph.matrices.items():
                 edge_label = symbol.label
                 (rows, columns, _) = matrix.to_coo()
-                edges_df = pd.DataFrame({
-                    'source': rows,
-                    'label': edge_label,
-                    'destination': columns,
-                })
-                csv_string = edges_df.to_csv(sep=' ', index=False, header=False)
+                edges_df = pd.DataFrame(
+                    {
+                        "source": rows,
+                        "label": edge_label,
+                        "destination": columns,
+                    }
+                )
+                csv_string = edges_df.to_csv(sep=" ", index=False, header=False)
                 output_file.write(csv_string)
 
     @staticmethod
     def _write_legacy_grammar(grammar: CnfGrammarTemplate, grammar_path: Path) -> None:
-        with (open(grammar_path, 'w', encoding="utf-8") as output_file):
+        with open(grammar_path, "w", encoding="utf-8") as output_file:
             output_file.write(f"{grammar.start_nonterm.label}\n\n")
 
             non_terms = grammar.non_terminals

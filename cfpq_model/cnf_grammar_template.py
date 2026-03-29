@@ -60,14 +60,14 @@ class CnfGrammarTemplate:
     def group_rules(self, map: dict[str, list[str]]) -> None:
         """
         Group rules by rhs1 that present in map
-        
-        Map structure: 
+
+        Map structure:
         {
             "B_i": ["B_1", "B_2"],
             "C_i": ["D_1", "D_2", "D_100"]
         }
-        
-        Rules become from 
+
+        Rules become from
         ```
         A -> B_1 L
         A -> B_2 L
@@ -79,7 +79,7 @@ class CnfGrammarTemplate:
         A -> B_i L
         B -> C_i W
         ```
-        
+
         TODO: make this more general
         """
         new_complex_rules: list[tuple[Symbol, Symbol, Symbol]] = []

@@ -11,6 +11,7 @@ def time_limit(seconds):
     if seconds is None:
         yield
     else:
+
         def signal_handler(signum, frame):
             raise TimeoutException(f"Timed out! Time limit was {seconds} seconds.")
 

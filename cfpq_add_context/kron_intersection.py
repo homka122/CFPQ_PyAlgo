@@ -757,14 +757,14 @@ class CFGIntersection:
                     rhs1 = Symbol(rhs1.term_label)
             if rhs2:
                 rhs2 = Symbol(f"S_{rhs2.rsm_state}_G{rhs2.depth}")
-            
+
             if rhs1 is None and rhs2 is None:
                 epsilon_rules.append(lhs)
             elif rhs2 is None:
                 term_rules.append((lhs, rhs1))
             else:
                 complex_rules.append((lhs, rhs1, rhs2))
-                
+
         return CnfGrammarTemplate(start_nonterm, epsilon_rules, term_rules, complex_rules)
 
     def to_text(self) -> str:

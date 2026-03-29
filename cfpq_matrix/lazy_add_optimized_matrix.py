@@ -5,6 +5,7 @@ from graphblas.core.operator import Monoid, Semiring
 from cfpq_matrix.abstract_optimized_matrix_decorator import AbstractOptimizedMatrixDecorator
 from cfpq_matrix.optimized_matrix import OptimizedMatrix
 from cfpq_matrix.matrix_to_optimized_adapter import MatrixToOptimizedAdapter
+
 # from cfpq_matrix.subtractable_semiring import SubOp
 
 
@@ -26,35 +27,25 @@ class LazyAddOptimizedMatrix(AbstractOptimizedMatrixDecorator):
         return sum(m.nvals for m in self.matrices)
 
     def _map_and_fold_mxm(
-        self,
-        mapper: Callable[[OptimizedMatrix], Matrix],
-        nvals_combine_threshold: int,
-        combiner: Callable[[Matrix, Matrix], Matrix],
-        acc: Matrix | None = None
+        self, mapper: Callable[[OptimizedMatrix], Matrix], nvals_combine_threshold: int, combiner: Callable[[Matrix, Matrix], Matrix], acc: Matrix | None = None
     ) -> Matrix:
         self.force_combine_small_matrices(nvals_combine_threshold)
 
-        for cur in sorted(
-                (mapper(m) for m in self.matrices if m.nvals != 0),
-                key=lambda m: m.nvals, reverse=False
-        ):
+        for cur in sorted((mapper(m) for m in self.matrices if m.nvals != 0), key=lambda m: m.nvals, reverse=False):
             acc = cur if acc is None else combiner(acc, cur)
         return mapper(self.base) if acc is None else acc
 
     def _map_and_fold_rsub(
-            self,
-            mapper: Callable[[OptimizedMatrix], OptimizedMatrix],
-            nvals_combine_threshold: int,
-            combiner: Callable[[Matrix, OptimizedMatrix], Matrix],
-            acc: Matrix,
-            reverse_sort=False,
+        self,
+        mapper: Callable[[OptimizedMatrix], OptimizedMatrix],
+        nvals_combine_threshold: int,
+        combiner: Callable[[Matrix, OptimizedMatrix], Matrix],
+        acc: Matrix,
+        reverse_sort=False,
     ) -> Matrix:
         self.force_combine_small_matrices(nvals_combine_threshold)
 
-        for cur in sorted(
-                (mapper(m) for m in self.matrices if m.nvals != 0),
-                key=lambda m: m.nvals, reverse=reverse_sort
-        ):
+        for cur in sorted((mapper(m) for m in self.matrices if m.nvals != 0), key=lambda m: m.nvals, reverse=reverse_sort):
             acc = cur if acc is None else combiner(acc, cur)
         return mapper(self.base) if acc is None else acc
 
@@ -74,20 +65,24 @@ class LazyAddOptimizedMatrix(AbstractOptimizedMatrixDecorator):
 
     def mxm(self, other: OptimizedMatrix, op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
         self.update_monoid(op.monoid)
-        return MatrixToOptimizedAdapter(self._map_and_fold_mxm(
-            mapper=lambda m: m.mxm(other, op=op, swap_operands=swap_operands).to_unoptimized(),
-            combiner=lambda acc, cur: acc.ewise_add(cur, op=op.monoid).new(),
-            nvals_combine_threshold=other.nvals
-        ))
+        return MatrixToOptimizedAdapter(
+            self._map_and_fold_mxm(
+                mapper=lambda m: m.mxm(other, op=op, swap_operands=swap_operands).to_unoptimized(),
+                combiner=lambda acc, cur: acc.ewise_add(cur, op=op.monoid).new(),
+                nvals_combine_threshold=other.nvals,
+            )
+        )
 
     def rsub(self, other: OptimizedMatrix, op: Callable[["OptimizedMatrix", "OptimizedMatrix"], "OptimizedMatrix"]) -> OptimizedMatrix:
-        return MatrixToOptimizedAdapter(self._map_and_fold_rsub(
-            acc=other.to_unoptimized(),
-            reverse_sort=True,
-            mapper=lambda m: m,
-            combiner=lambda acc, cur: cur.rsub(MatrixToOptimizedAdapter(acc), op).to_unoptimized(),
-            nvals_combine_threshold=other.nvals
-        ))
+        return MatrixToOptimizedAdapter(
+            self._map_and_fold_rsub(
+                acc=other.to_unoptimized(),
+                reverse_sort=True,
+                mapper=lambda m: m,
+                combiner=lambda acc, cur: cur.rsub(MatrixToOptimizedAdapter(acc), op).to_unoptimized(),
+                nvals_combine_threshold=other.nvals,
+            )
+        )
 
     def iadd(self, other: OptimizedMatrix, op: Monoid):
         self.update_monoid(op)
@@ -98,20 +93,18 @@ class LazyAddOptimizedMatrix(AbstractOptimizedMatrixDecorator):
         while True:
             other_nvals = max(other_base.nvals, self.min_size)
             i = next(
-                (i for i in range(len(self.matrices))
-                 if other_nvals / self.size_factor <=
-                 max(self.min_size, self.matrices[i].nvals)
-                 <= other_nvals * self.size_factor),
-                None
+                (
+                    i
+                    for i in range(len(self.matrices))
+                    if other_nvals / self.size_factor <= max(self.min_size, self.matrices[i].nvals) <= other_nvals * self.size_factor
+                ),
+                None,
             )
 
             if i is None:
                 self.matrices.append(base.optimize_similarly(MatrixToOptimizedAdapter(other_base)))
                 return self
-            other_base << other_base.ewise_add(
-                self.matrices[i].to_unoptimized(),
-                op=op
-            )
+            other_base << other_base.ewise_add(self.matrices[i].to_unoptimized(), op=op)
             del self.matrices[i]
 
     def update_monoid(self, op: Monoid):
@@ -120,11 +113,7 @@ class LazyAddOptimizedMatrix(AbstractOptimizedMatrixDecorator):
             self.last_used_monoid = op
 
     def optimize_similarly(self, other: OptimizedMatrix) -> OptimizedMatrix:
-        return LazyAddOptimizedMatrix(
-            self.base.optimize_similarly(other),
-            nvals_factor=self.size_factor,
-            min_nvals=self.min_size
-        )
+        return LazyAddOptimizedMatrix(self.base.optimize_similarly(other), nvals_factor=self.size_factor, min_nvals=self.min_size)
 
     def __sizeof__(self):
         return sum(m.__sizeof__() for m in self.matrices)
