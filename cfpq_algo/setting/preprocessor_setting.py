@@ -22,7 +22,7 @@ def preprocess_graph_and_grammar(
     graph: LabelDecomposedGraph,
     grammar: CnfGrammarTemplate,
     algo_settings: List[AlgoSetting]
-):
+) -> tuple[LabelDecomposedGraph, CnfGrammarTemplate]:
     for algo_setting in algo_settings:
         if isinstance(algo_setting, PreProcessorSetting):
             algo_setting.was_used_by_algo = True
