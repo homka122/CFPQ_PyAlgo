@@ -21,6 +21,12 @@ class BlockMatrix(AbstractOptimizedMatrixDecorator, ABC):
     def base(self) -> OptimizedMatrix:
         return self._base
 
+    def optimize_similarly_with_block(self, other: OptimizedMatrix, other_block: BlockMatrixSpace) -> OptimizedMatrix:
+        result = other_block.automize_block_operations(self.base.optimize_similarly(other))
+        if isinstance(result, CellBlockMatrix):
+            assert result.block_matrix_space.cell_shape == result.shape
+        return result
+
     def optimize_similarly(self, other: OptimizedMatrix) -> OptimizedMatrix:
         return self.block_matrix_space.automize_block_operations(self.base.optimize_similarly(other))
 
@@ -32,12 +38,16 @@ class CellBlockMatrix(BlockMatrix):
 
     def mxm(self, other: OptimizedMatrix, op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
         assert isinstance(other, BlockMatrix)
-        assert self.block_matrix_space.cell_shape[1] == other.block_matrix_space.cell_shape[0]
-        if self.block_matrix_space.is_single_cell(other.shape):
+        assert (
+            self.block_matrix_space.cell_shape[1] == other.block_matrix_space.cell_shape[0]
+            if not swap_operands
+            else self.block_matrix_space.cell_shape[0] == other.block_matrix_space.cell_shape[1]
+        )
+        if other.block_matrix_space.is_single_cell(other.shape):
             return self.base.mxm(other.base, op, swap_operands=swap_operands)
         return self.base.mxm(
             MatrixToOptimizedAdapter(
-                self.block_matrix_space.hyper_rotate(
+                other.block_matrix_space.hyper_rotate(
                     other.to_unoptimized(), BlockMatrixOrientation.VERTICAL if swap_operands else BlockMatrixOrientation.HORIZONTAL
                 )
             ),
@@ -86,7 +96,7 @@ class VectorBlockMatrix(BlockMatrix):
     def mxm(self, other: OptimizedMatrix, op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
         assert isinstance(other, BlockMatrix)
         assert self.block_matrix_space.cell_shape[1] == other.block_matrix_space.cell_shape[0]
-        if self.block_matrix_space.is_single_cell(other.shape):
+        if other.block_matrix_space.is_single_cell(other.shape):
             return self._force_init_orientation(BlockMatrixOrientation.HORIZONTAL if swap_operands else BlockMatrixOrientation.VERTICAL).mxm(
                 other, op, swap_operands=swap_operands
             )
