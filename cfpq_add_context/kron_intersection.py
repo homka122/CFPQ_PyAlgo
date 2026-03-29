@@ -752,18 +752,18 @@ class CFGIntersection:
             lhs = Symbol(f"S_{lhs.rsm_state}_G{lhs.depth}")
             if rhs1:
                 if not rhs1.is_term:
-                    rhs1 = Symbol(f"S_{rhs1.rsm_state}_G{rhs1.depth}")
+                    rhs1_symbol = Symbol(f"S_{rhs1.rsm_state}_G{rhs1.depth}")
                 else:
-                    rhs1 = Symbol(rhs1.term_label)
+                    rhs1_symbol = Symbol(rhs1.term_label)
             if rhs2:
-                rhs2 = Symbol(f"S_{rhs2.rsm_state}_G{rhs2.depth}")
+                rhs2_symbol = Symbol(f"S_{rhs2.rsm_state}_G{rhs2.depth}")
 
             if rhs1 is None and rhs2 is None:
                 epsilon_rules.append(lhs)
             elif rhs2 is None:
-                term_rules.append((lhs, rhs1))
+                term_rules.append((lhs, rhs1_symbol))
             else:
-                complex_rules.append((lhs, rhs1, rhs2))
+                complex_rules.append((lhs, rhs1_symbol, rhs2_symbol))
 
         return CnfGrammarTemplate(start_nonterm, epsilon_rules, term_rules, complex_rules)
 
