@@ -30,13 +30,15 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         self.block_space: BlockMatrixSpace = base.block_matrix_space
 
     # written by Homka122
-    def _is_flatted(self, other: OptimizedMatrix) -> bool:
-        if self._get_inner_shape(other)[0] == 1:
+    def _is_flatted(self) -> bool:
+        if self.type == "RSM" or self.type == "Context":
+            return True
+        if self._get_inner_shape()[0] == 1:
             return True
 
         return False
 
-    def _get_inner_shape(self, other: OptimizedMatrix) -> tuple[int, int]:
+    def _get_inner_shape(self) -> tuple[int, int]:
         return (self.block_space.cell_shape[0] // self.n, self.block_space.cell_shape[1] // self.n)
 
     @staticmethod
@@ -50,70 +52,87 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
     @staticmethod
     def get_depth_from_symbol(symbol: str) -> int:
-        if not symbol.startswith("S"):
+        if symbol.startswith(("(", ")")):
+            return 1
+        elif not symbol.startswith("S"):
             return 0
         return int(symbol.split("G")[-1])
 
     # make from matrix with size 1 x nums^(depth) matrix with size nums x nums^(depth-1) if depth != 0
     def _flat_matrix(self) -> None:
-        if self._is_flatted(self):
+        if self._is_flatted():
             return
 
-        if self.block_space.is_single_cell(self.shape):
-            input_shape = self._get_inner_shape(self)
-            assert input_shape[0] == self.context_num
-            output_shape = (1, self.context_num * input_shape[1])
+        input_shape = self._get_inner_shape()
+        assert input_shape[0] == self.context_num
+        output_shape = (1, input_shape[1] * self.context_num)
 
-            (rows, columns, values) = self.to_unoptimized().to_coo()
-            columns = columns % self.n + (columns // self.n * (self.context_num * self.n)) + (rows // self.n * self.n)
+        matrices = self.block_space.get_hyper_vector_blocks(self.base.to_unoptimized())
+        new_matrices: list[Matrix] = []
+        for matrix in matrices:
+            (rows, cols, values) = matrix.to_coo()
+            cols = cols % self.n + (cols // self.n * self.context_num * self.n) + (rows // self.n * self.n)
             rows = rows % self.n
+            new_matrices.append(Matrix.from_coo(rows, cols, values, nrows=output_shape[0] * self.n, ncols=output_shape[1] * self.n))
 
-            output = self.base.optimize_similarly(
-                MatrixToOptimizedAdapter(Matrix.from_coo(rows, columns, values, nrows=output_shape[0] * self.n, ncols=output_shape[1] * self.n))
-            )
-            self._base = output
-        elif self.block_space.get_block_matrix_orientation(self.shape) == BlockMatrixOrientation.VERTICAL:
-            raise NotImplementedError("Vertical block matrix flattening is not implemented yet")
-        elif self.block_space.get_block_matrix_orientation(self.shape) == BlockMatrixOrientation.HORIZONTAL:
-            raise NotImplementedError("Horizontal block matrix flattening is not implemented yet")
+        base = MatrixToOptimizedAdapter(self.block_space.stack_into_hyper_column(new_matrices))
+        assert isinstance(self.base, BlockMatrix)
+        new_block_space = BlockMatrixSpaceImpl((output_shape[0] * self.n, output_shape[1] * self.n), self.block_space.block_count)
+        self._base = self.base.optimize_similarly_with_block(
+            base,
+            new_block_space,
+        )
+        self.block_space = new_block_space
 
     def _group_matrix(self) -> None:
-        if not self._is_flatted(self):
+        if not self._is_flatted():
             return
 
-        input_shape = self._get_inner_shape(self)
+        input_shape = self._get_inner_shape()
         assert input_shape[0] == 1
         output_shape = (self.context_num, input_shape[1] // self.context_num)
 
-        (rows, columns, values) = self.to_unoptimized().to_coo()
-        rows = rows + (columns // self.n % self.context_num * self.n)
-        columns = columns % self.n
+        matrices = self.block_space.get_hyper_vector_blocks(self.base.to_unoptimized())
+        new_matrices: list[Matrix] = []
+        for matrix in matrices:
+            (rows, cols, values) = matrix.to_coo()
+            rows = rows + (cols // self.n % self.context_num * self.n)
+            cols = cols % self.n + cols // (self.n * self.context_num) * self.n
+            new_matrices.append(Matrix.from_coo(rows, cols, values, nrows=output_shape[0] * self.n, ncols=output_shape[1] * self.n))
 
-        output = self.base.optimize_similarly(
-            MatrixToOptimizedAdapter(Matrix.from_coo(rows, columns, values, nrows=output_shape[0] * self.n, ncols=output_shape[1] * self.n))
+        base = MatrixToOptimizedAdapter(self.block_space.stack_into_hyper_column(new_matrices))
+        assert isinstance(self.base, BlockMatrix)
+        new_block_space = BlockMatrixSpaceImpl((output_shape[0] * self.n, output_shape[1] * self.n), self.block_space.block_count)
+        self._base = self.base.optimize_similarly_with_block(
+            base, new_block_space
         )
-        self._base = output
+        self.block_space = new_block_space
 
     @staticmethod
     def get_block_diag_matrix(matrix: OptimizedMatrix, graph_size: int) -> OptimizedMatrix:
         assert matrix.shape[0] == graph_size
-        (rows, columns, values) = matrix.to_unoptimized().to_coo()
-        rows = rows + (columns // graph_size * graph_size)
+        (rows, cols, values) = matrix.to_unoptimized().to_coo()
+        rows = rows + (cols // graph_size * graph_size)
 
-        base = Matrix.from_coo(rows, columns, values, nrows=matrix.shape[1], ncols=matrix.shape[1])
+        base = Matrix.from_coo(rows, cols, values, nrows=matrix.shape[1], ncols=matrix.shape[1])
         return MatrixToOptimizedAdapter(base)
 
     @staticmethod
     def get_hyper_column(matrix: OptimizedMatrix, count: int) -> OptimizedMatrix:
+        assert isinstance(matrix, PointsToMatrix)
+        assert isinstance(matrix.base, BlockMatrix)
         base = matrix.to_unoptimized()
         matrices = [[base] for _ in range(count)]
-        return MatrixToOptimizedAdapter(graphblas.ss.concat(matrices))
+
+        base_adapter = MatrixToOptimizedAdapter(graphblas.ss.concat(matrices))
+        base = matrix.base.optimize_similarly_with_block(base_adapter, BlockMatrixSpaceImpl(base_adapter.shape, matrix.base.block_matrix_space.block_count))
+        return base
 
     @staticmethod
-    def get_hyper_row(matrix: OptimizedMatrix, count: int) -> OptimizedMatrix:
+    def get_hyper_row(matrix: OptimizedMatrix, count: int, vertex_count: int) -> OptimizedMatrix:
         base = matrix.to_unoptimized()
         matrices = [[base for _ in range(count)]]
-        return MatrixToOptimizedAdapter(graphblas.ss.concat(matrices))
+        return BlockMatrixSpaceImpl((vertex_count, vertex_count * count), 1).automize_block_operations(MatrixToOptimizedAdapter(graphblas.ss.concat(matrices)))
 
     @staticmethod
     def reduce_column(matrix: OptimizedMatrix, op: Monoid, vertex_count: int) -> OptimizedMatrix:
@@ -139,27 +158,27 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             right._flat_matrix()
             return self.base.mxm(other.base, op, swap_operands=swap_operands)
         elif left.type == "Context":
-            left_shape = self._get_inner_shape(left)
+            left_shape = left._get_inner_shape()
             if left_shape[0] == 1:
                 # open context [(_0, ..., (_nums]
-                right_shape = self._get_inner_shape(right)
+                right_shape = right._get_inner_shape()
                 if right_shape[0] == 1 and right_shape[1] == 1:
                     # [(_0, ..., (_nums] x [S] => [(_0, ..., (_nums] x [S, ..., S]^T = [S]
                     if not swap_operands:
-                        column = self.optimize_similarly(self.get_hyper_column(other, self.context_num))
-                        assert isinstance(column, PointsToMatrix)
-                        return self.base.mxm(column.base, op, swap_operands=swap_operands)
+                        column = self.get_hyper_column(other, self.context_num)
+                        assert isinstance(column, BlockMatrix)
+                        return self.base.mxm(column, op, swap_operands=swap_operands)
                     else:
-                        column = self.optimize_similarly(self.get_hyper_column(self, self.context_num))
-                        assert isinstance(column, PointsToMatrix)
-                        return column.base.mxm(other.base, op, swap_operands=swap_operands)
+                        column = self.get_hyper_column(self, self.context_num)
+                        assert isinstance(column, BlockMatrix)
+                        return column.mxm(other.base, op, swap_operands=swap_operands)
                 else:
                     # [(_0, ..., (_nums] x State [nums x nums^(depth-1)] = State [1 x nums^(depth-1)]
                     right._group_matrix()
                     return self.base.mxm(other.base, op, swap_operands=swap_operands)
             else:
                 # closed context [)_0, ..., )_nums]^T
-                right_shape = self._get_inner_shape(right)
+                right_shape = right._get_inner_shape()
                 if right_shape[0] == 1 and right_shape[1] == 1:
                     # [)_0, ..., )_nums]^T x [S] = [)_0*S, ..., )_nums*S]^T
                     return self.base.mxm(other.base, op, swap_operands=swap_operands)
@@ -175,13 +194,23 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             right._flat_matrix()
 
             if not swap_operands:
-                diag = self.optimize_similarly(self.get_block_diag_matrix(other, self.n))
-                assert isinstance(diag, PointsToMatrix)
-                return self.base.mxm(diag.base, op, swap_operands=swap_operands)
+                assert isinstance(other.base, BlockMatrix)
+                diag_adapter = self.get_block_diag_matrix(other, self.n)
+                diag = other.base.optimize_similarly_with_block(
+                    diag_adapter,
+                    BlockMatrixSpaceImpl(diag_adapter.shape, self.block_space.block_count),
+                )
+                assert isinstance(diag, BlockMatrix)
+                return self.base.mxm(diag, op, swap_operands=swap_operands)
             if swap_operands:
-                diag = self.optimize_similarly(self.get_block_diag_matrix(self, self.n))
-                assert isinstance(diag, PointsToMatrix)
-                return diag.base.mxm(self.base, op, swap_operands=swap_operands)
+                assert isinstance(other.base, BlockMatrix)
+                diag_adapter = self.get_block_diag_matrix(self, self.n)
+                diag = other.base.optimize_similarly_with_block(
+                    diag_adapter,
+                    BlockMatrixSpaceImpl(diag_adapter.shape, self.block_space.block_count),
+                )
+                assert isinstance(diag, BlockMatrix)
+                return diag.mxm(self.base, op, swap_operands=swap_operands)
 
             return self.base.mxm(other.base, op, swap_operands=swap_operands)
         else:
