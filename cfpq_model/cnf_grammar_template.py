@@ -99,6 +99,49 @@ class CnfGrammarTemplate:
         self.complex_rules = new_complex_rules
 
     @staticmethod
+    def read_from_str(grammar_str: str) -> "CnfGrammarTemplate":
+        """
+        Reads a CNF grammar from a string and constructs a CnfGrammarTemplate object.
+        """
+        print("Start read grammar")
+        lines = [line.strip() for line in grammar_str.splitlines() if line.strip()]
+
+        if len(lines) >= 2 and lines[-2] == "Count:":
+            start_nonterm = Symbol(lines[-1])
+            lines = lines[:-2]
+        else:
+            raise ValueError(
+                f"Invalid CNF grammar file '{path}'.\n"
+                f"The last two lines should specify the starting non-terminal in the format:\n"
+                f"'''\n"
+                f"Count:\n"
+                f"<START_NON_TERMINAL>\n"
+                f"'''"
+            )
+
+        epsilon_rules = []
+        simple_rules = []
+        complex_rules = []
+
+        for line in lines:
+            parts = line.split()
+            if len(parts) == 1:
+                epsilon_rules.append(Symbol(parts[0]))
+            elif len(parts) == 2:
+                simple_rules.append((Symbol(parts[0]), Symbol(parts[1])))
+            elif len(parts) == 3:
+                complex_rules.append((Symbol(parts[0]), Symbol(parts[1]), Symbol(parts[2])))
+            else:
+                raise ValueError(
+                    f"Invalid rule format: `{line}` in file `{path}`. "
+                    f"Expected formats are `<NON_TERMINAL> <SYMBOL_1> <SYMBOL_2>` for complex rules, "
+                    f"`<NON_TERMINAL> <SYMBOL_1>` for simple rules, and `<NON_TERMINAL>` for epsilon rules."
+                )
+
+        print("Finish read grammar")
+        return CnfGrammarTemplate(start_nonterm, epsilon_rules, simple_rules, complex_rules)
+
+    @staticmethod
     def read_from_pocr_cnf_file(path: Union[Path, str]) -> "CnfGrammarTemplate":
         """
         Reads a CNF grammar from a file and constructs a CnfGrammarTemplate object.
@@ -117,43 +160,7 @@ class CnfGrammarTemplate:
             ```
         """
         with open(path, "r", encoding="utf-8") as file:
-            print("Start read grammar")
-            lines = [line.strip() for line in file.readlines() if line.strip()]
-
-            if len(lines) >= 2 and lines[-2] == "Count:":
-                start_nonterm = Symbol(lines[-1])
-                lines = lines[:-2]
-            else:
-                raise ValueError(
-                    f"Invalid CNF grammar file '{path}'.\n"
-                    f"The last two lines should specify the starting non-terminal in the format:\n"
-                    f"'''\n"
-                    f"Count:\n"
-                    f"<START_NON_TERMINAL>\n"
-                    f"'''"
-                )
-
-            epsilon_rules = []
-            simple_rules = []
-            complex_rules = []
-
-            for line in lines:
-                parts = line.split()
-                if len(parts) == 1:
-                    epsilon_rules.append(Symbol(parts[0]))
-                elif len(parts) == 2:
-                    simple_rules.append((Symbol(parts[0]), Symbol(parts[1])))
-                elif len(parts) == 3:
-                    complex_rules.append((Symbol(parts[0]), Symbol(parts[1]), Symbol(parts[2])))
-                else:
-                    raise ValueError(
-                        f"Invalid rule format: `{line}` in file `{path}`. "
-                        f"Expected formats are `<NON_TERMINAL> <SYMBOL_1> <SYMBOL_2>` for complex rules, "
-                        f"`<NON_TERMINAL> <SYMBOL_1>` for simple rules, and `<NON_TERMINAL>` for epsilon rules."
-                    )
-
-            print("Finish read grammar")
-            return CnfGrammarTemplate(start_nonterm, epsilon_rules, simple_rules, complex_rules)
+            return CnfGrammarTemplate.read_from_str(file.read())
 
     def write_to_pocr_cnf_file(self, path: Union[Path, str], include_starting: bool = True) -> None:
         with open(path, "w", encoding="utf-8") as file:
