@@ -333,11 +333,20 @@ class OptimizedLabelDecomposedGraph:
 
                 if (
                     leftrhs.label.startswith(")")
-                    and right.shape == (self.vertex_count, self.vertex_count)
                     and (PointsToMatrix.get_depth_from_symbol(lhs.label) == 0 or PointsToMatrix.get_depth_from_symbol(lhs.label) == self.depth + 1)
                 ):
+                    assert isinstance(left, PointsToMatrix) and isinstance(right, PointsToMatrix)
+                    if rightrhs.label == "S_10_G0_i":
+                        pass
+                    new_cell_shape = (left.block_space.cell_shape[0], right.block_space.cell_shape[1])
+                    base = PointsToMatrix.reduce_column(
+                        BlockMatrixSpaceImpl(new_cell_shape, self.block_matrix_space.block_count).automize_block_operations(mxm),
+                        op.monoid,
+                        self.vertex_count,
+                        self.block_matrix_space.block_count,
+                    )
                     mxm = PointsToMatrix(
-                        (PointsToMatrix.reduce_column(mxm, op.monoid, self.vertex_count)),
+                        base,
                         "State",
                         self.vertex_count,
                         self.contexts_num,
@@ -345,15 +354,21 @@ class OptimizedLabelDecomposedGraph:
                     )
                 elif leftrhs.label.startswith("(") and PointsToMatrix.get_depth_from_symbol(lhs.label) == self.depth:
                     mxm = PointsToMatrix(
-                    (PointsToMatrix.get_hyper_row(mxm, self.contexts_num**self.depth, vertex_count=self.vertex_count)),
-                    "State",
-                    self.vertex_count,
-                    self.contexts_num,
-                    PointsToMatrix.get_depth_from_symbol(lhs.label),
+                        (
+                            PointsToMatrix.get_hyper_row(
+                                mxm, self.contexts_num**self.depth, vertex_count=self.vertex_count, block_count=self.block_matrix_space.block_count
+                            )
+                        ),
+                        "State",
+                        self.vertex_count,
+                        self.contexts_num,
+                        PointsToMatrix.get_depth_from_symbol(lhs.label),
                     )
                 else:
+                    assert isinstance(left, PointsToMatrix) and isinstance(right, PointsToMatrix)
+                    new_cell_shape = (left.block_space.cell_shape[0], right.block_space.cell_shape[1])
                     mxm = PointsToMatrix(
-                        BlockMatrixSpaceImpl(mxm.shape, 1).automize_block_operations(mxm),
+                        BlockMatrixSpaceImpl(new_cell_shape, self.block_matrix_space.block_count).automize_block_operations(mxm),
                         "State",
                         self.vertex_count,
                         self.contexts_num,
@@ -374,7 +389,7 @@ class OptimizedLabelDecomposedGraph:
 
         type = PointsToMatrix.get_type_from_symbol(symbol.label)
         depth_local = PointsToMatrix.get_depth_from_symbol(symbol.label)
-        
+
         if type == "State":
             nrows = self.vertex_count
             if depth_local == self.depth + 1:
@@ -392,7 +407,11 @@ class OptimizedLabelDecomposedGraph:
                 nrows = self.vertex_count * (self.contexts_num)
                 ncols = self.vertex_count
 
-        base = MatrixToOptimizedAdapter(Matrix(self.dtype, nrows, ncols, name=symbol.label))
+        nrows_base = nrows
+        if symbol.is_indexed:
+            nrows_base *= self.block_matrix_space.block_count
+
+        base = MatrixToOptimizedAdapter(Matrix(self.dtype, nrows_base, ncols, name=symbol.label))
         block_space = BlockMatrixSpaceImpl((nrows, ncols), self.block_matrix_space.block_count)
         base = block_space.automize_block_operations(base)
 

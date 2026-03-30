@@ -82,20 +82,28 @@ class CnfGrammarTemplate:
 
         TODO: make this more general
         """
+        map: dict[str, str] = {old_sym: new_sym for new_sym, old_syms in map.items() for old_sym in old_syms}
+        replaced_symbols = [rhs for rhss in map.items() for rhs in rhss]
         new_complex_rules: list[tuple[Symbol, Symbol, Symbol]] = []
         visited: set[tuple[str, str, str]] = set()
         for lhs, rhs1, rhs2 in self.complex_rules:
-            if rhs1.label not in [rhs for rhss in map.values() for rhs in rhss]:
+            if lhs.label not in replaced_symbols and rhs1.label not in replaced_symbols and rhs2.label not in replaced_symbols:
                 new_complex_rules.append((lhs, rhs1, rhs2))
                 continue
-            for new_rhs1, old_rhss1 in map.items():
-                if (lhs.label, new_rhs1, rhs2.label) in visited:
-                    continue
-                if not rhs1.label in old_rhss1:
-                    continue
 
-                visited.add((lhs.label, new_rhs1, rhs2.label))
-                new_complex_rules.append((lhs, Symbol(new_rhs1), rhs2))
+            new_lhs, new_rhs1, new_rhs2 = lhs.label, rhs1.label, rhs2.label
+            if lhs.label in replaced_symbols:
+                new_lhs = map[lhs.label]
+            if rhs1.label in replaced_symbols:
+                new_rhs1 = map[rhs1.label]
+            if rhs2.label in replaced_symbols:
+                new_rhs2 = map[rhs2.label]
+
+            if (new_lhs, new_rhs1, new_rhs2) in visited:
+                continue
+
+            visited.add((new_lhs, new_rhs1, new_rhs2))
+            new_complex_rules.append((Symbol(new_lhs), Symbol(new_rhs1), Symbol(new_rhs2)))
         self.complex_rules = new_complex_rules
 
     @staticmethod

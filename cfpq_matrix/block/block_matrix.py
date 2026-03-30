@@ -95,13 +95,17 @@ class VectorBlockMatrix(BlockMatrix):
 
     def mxm(self, other: OptimizedMatrix, op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
         assert isinstance(other, BlockMatrix)
-        assert self.block_matrix_space.cell_shape[1] == other.block_matrix_space.cell_shape[0]
+        assert (
+            self.block_matrix_space.cell_shape[1] == other.block_matrix_space.cell_shape[0]
+            if not swap_operands
+            else self.block_matrix_space.cell_shape[0] == other.block_matrix_space.cell_shape[1]
+        )
         if other.block_matrix_space.is_single_cell(other.shape):
             return self._force_init_orientation(BlockMatrixOrientation.HORIZONTAL if swap_operands else BlockMatrixOrientation.VERTICAL).mxm(
                 other, op, swap_operands=swap_operands
             )
         return self._force_init_orientation(BlockMatrixOrientation.VERTICAL if swap_operands else BlockMatrixOrientation.HORIZONTAL).mxm(
-            MatrixToOptimizedAdapter(self.block_matrix_space.to_block_diag_matrix(other.to_unoptimized())), op=op, swap_operands=swap_operands
+            MatrixToOptimizedAdapter(other.block_matrix_space.to_block_diag_matrix(other.to_unoptimized())), op=op, swap_operands=swap_operands
         )
 
     def rsub(self, other: OptimizedMatrix, op: Callable[["OptimizedMatrix", "OptimizedMatrix"], "OptimizedMatrix"]) -> OptimizedMatrix:

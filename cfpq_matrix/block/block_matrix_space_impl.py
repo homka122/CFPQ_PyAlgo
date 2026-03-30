@@ -64,7 +64,14 @@ class BlockMatrixSpaceImpl(BlockMatrixSpace):
         else:
             assert False
 
-        return Matrix.from_coo(rows, columns, values, nrows=hyper_vector.ncols, ncols=hyper_vector.nrows)
+        if orientation == BlockMatrixOrientation.VERTICAL:
+            nrows = self.cell_shape[0] * self.block_count
+            ncols = self.cell_shape[1]
+        else:
+            nrows = self.cell_shape[0]
+            ncols = self.cell_shape[1] * self.block_count
+
+        return Matrix.from_coo(rows, columns, values, nrows=nrows, ncols=ncols)
 
     def to_block_diag_matrix(self, hyper_vector: Matrix) -> Matrix:
         input_orientation = self.get_block_matrix_orientation(hyper_vector.shape)
@@ -89,7 +96,7 @@ class BlockMatrixSpaceImpl(BlockMatrixSpace):
         return Matrix(dtype=typ, nrows=self.cell_shape[0], ncols=self.cell_shape[1])
 
     def stack_into_hyper_column(self, matrices: List[Matrix]) -> Matrix:
-        assert len(matrices) == self.block_count
+        assert len(matrices) == self.block_count or len(matrices) == 1
         tiles = [[m] for m in matrices]
         return graphblas.ss.concat(tiles)
 
