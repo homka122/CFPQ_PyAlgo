@@ -24,35 +24,8 @@ class AbstractAllPairsCflReachabilityMatrixAlgoInstance(AllPairsCflReachabilityA
         settings: List[AlgoSetting],
         algebraic_structure: SubtractableSemiring = SubtractableSemiring(one=True, semiring=graphblas.semiring.any_pair, sub_op=complimentary_mask),
     ):
-        graph.group_contexts()
         self.graph: OptimizedLabelDecomposedGraph = OptimizedLabelDecomposedGraph.from_unoptimized(graph, matrix_optimizer=create_matrix_optimizer(settings))
-        self.grammar: CnfGrammarTemplate = CnfGrammarTemplate(grammar.start_nonterm, grammar.epsilon_rules, grammar.simple_rules, grammar.complex_rules)
-        self.grammar.group_rules({"(i": [f"({i+1}" for i in range(self.graph.contexts_num)], ")i": [f"){i+1}" for i in range(self.graph.contexts_num)]})
-        self.grammar.group_rules(
-            {
-                "load_i": [f"load_f{i+1}" for i in range(self.graph.block_matrix_space.block_count)],
-                "load_r_i": [f"load_f{i+1}_r" for i in range(self.graph.block_matrix_space.block_count)],
-                "store_i": [f"store_f{i+1}" for i in range(self.graph.block_matrix_space.block_count)],
-                "store_r_i": [f"store_f{i+1}_r" for i in range(self.graph.block_matrix_space.block_count)],
-                "S_7_G0_i": [f"S_{7 + 4*i}_G0" for i in range(self.graph.depth)],
-                "S_7_G1_i": [f"S_{7 + 4*i}_G1" for i in range(self.graph.depth)],
-                "S_7_G2_i": [f"S_{7 + 4*i}_G2" for i in range(self.graph.depth)],
-                "S_7_G3_i": [f"S_{7 + 4*i}_G3" for i in range(self.graph.depth)],
-                "S_8_G0_i": [f"S_{8 + 4*i}_G0" for i in range(self.graph.depth)],
-                "S_8_G1_i": [f"S_{8 + 4*i}_G1" for i in range(self.graph.depth)],
-                "S_8_G2_i": [f"S_{8 + 4*i}_G2" for i in range(self.graph.depth)],
-                "S_8_G3_i": [f"S_{8 + 4*i}_G3" for i in range(self.graph.depth)],
-                "S_9_G0_i": [f"S_{9 + 4*i}_G0" for i in range(self.graph.depth)],
-                "S_9_G1_i": [f"S_{9 + 4*i}_G1" for i in range(self.graph.depth)],
-                "S_9_G2_i": [f"S_{9 + 4*i}_G2" for i in range(self.graph.depth)],
-                "S_9_G3_i": [f"S_{9 + 4*i}_G3" for i in range(self.graph.depth)],
-                "S_10_G0_i": [f"S_{10 + 4*i}_G0" for i in range(self.graph.depth)],
-                "S_10_G1_i": [f"S_{10 + 4*i}_G1" for i in range(self.graph.depth)],
-                "S_10_G2_i": [f"S_{10 + 4*i}_G2" for i in range(self.graph.depth)],
-                "S_10_G3_i": [f"S_{10 + 4*i}_G3" for i in range(self.graph.depth)],
-            }
-        )
-
+        self.grammar: CnfGrammarTemplate = grammar
         self.settings: list[AlgoSetting] = settings
         self.algebraic_structure: SubtractableSemiring = algebraic_structure
 
