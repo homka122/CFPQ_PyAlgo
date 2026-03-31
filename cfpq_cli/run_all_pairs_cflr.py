@@ -72,10 +72,10 @@ def run_all_pairs_cflr(
         if not explode_indices:  # IndexExplodingPreProcessorSetting
             grammar.group_rules(
                 {
-                    "load_i": [f"load_f{i+1}" for i in range(graph.block_matrix_space.block_count)],
-                    "load_r_i": [f"load_f{i+1}_r" for i in range(graph.block_matrix_space.block_count)],
-                    "store_i": [f"store_f{i+1}" for i in range(graph.block_matrix_space.block_count)],
-                    "store_r_i": [f"store_f{i+1}_r" for i in range(graph.block_matrix_space.block_count)],
+                    # "load_i": [f"load_f{i}" for i in range(graph.block_matrix_space.block_count)],
+                    # "load_r_i": [f"load_f{i}_r" for i in range(graph.block_matrix_space.block_count)],
+                    # "store_i": [f"store_f{i}" for i in range(graph.block_matrix_space.block_count)],
+                    # "store_r_i": [f"store_f{i}_r" for i in range(graph.block_matrix_space.block_count)],
                     "S_7_G0_i": [f"S_{7 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
                     "S_7_G1_i": [f"S_{7 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
                     "S_7_G2_i": [f"S_{7 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],

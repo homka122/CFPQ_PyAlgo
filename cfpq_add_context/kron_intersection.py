@@ -477,7 +477,7 @@ class PointsToRSM:
             "FlowsTo",
         ]
         self.nodes_count: int = 0
-        for i in range(1, self.num_fields + 1):
+        for i in range(self.num_fields):
             self.labels.extend([f"load_f{i}", f"load_f{i}_r", f"store_f{i}", f"store_f{i}_r"])
 
         self.graph: dict[str, list[tuple[int, int]]] = defaultdict(list)
@@ -511,7 +511,7 @@ class PointsToRSM:
 
         self.nodes_count = 7
 
-        for i in range(1, self.num_fields + 1):
+        for i in range(self.num_fields):
 
             self.graph[f"load_f{i}"].append((0, self.nodes_count))
             self.graph["Alias"].append((self.nodes_count, self.nodes_count + 1))

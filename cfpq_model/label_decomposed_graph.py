@@ -66,20 +66,20 @@ class LabelDecomposedGraph:
     def group_contexts(self) -> None:
         tiles_open: list[list[Matrix]] = [[]]
         tiles_close: list[list[Matrix]] = []
-        for i in range(self.contexts_num):
+        for i in range(1, self.contexts_num + 1):
             for key, matrix in self.matrices.items():
                 if key.label == f"({i}":
                     tiles_open[0].append(matrix)
                 elif key.label == f"){i}":
                     tiles_close.append([matrix])
-            if len(tiles_open[0]) != i + 1:
+            if len(tiles_open[0]) != i:
                 tiles_open[0].append(Matrix(self.dtype, self.vertex_count, self.vertex_count))
-            if len(tiles_close) != i + 1:
+            if len(tiles_close) != i:
                 tiles_close.append([Matrix(self.dtype, self.vertex_count, self.vertex_count)])
 
         self.matrices[Symbol("(i")] = graphblas.ss.concat(tiles_open)
         self.matrices[Symbol(")i")] = graphblas.ss.concat(tiles_close)
-        for i in range(self.contexts_num):
+        for i in range(1, self.contexts_num + 1):
             if Symbol(f"({i}") in self.matrices:
                 del self.matrices[Symbol(f"({i}")]
             if Symbol(f"){i}") in self.matrices:
