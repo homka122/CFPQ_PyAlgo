@@ -41,7 +41,7 @@ def run_all_pairs_cflr(
         graphblas.ss.burble.enable()
     total_start = time()
     algo = get_all_pairs_cfl_reachability_algo(algo_name)
-    
+
     if homka_generate_grammar is not None:
         if homka_num_contexts is None or homka_depth is None:
             raise ValueError("homka_num_contexts and homka_depth must be specified when homka_generate_grammar is specified")
@@ -51,15 +51,22 @@ def run_all_pairs_cflr(
         context_num = 0
         depth = 0
         homka_group_automata = False
-    
+
     if add_contexts:
         graph, initial_graph_nvertices = add_context(graph_path, max_num_of_contexts, depth)
     else:
         graph = LabelDecomposedGraph.read_from_pocr_graph_file(graph_path, context_num, depth, homka_group_automata)
 
+    need_save = False
     if homka_generate_grammar is not None:
         num_fields = graph.block_matrix_space.block_count
-        grammar = generate_intersection_cfg(context_num, depth, num_fields).to_cnf_template(homka_group_automata)
+        grammar_path = f"grammars/grammar_{depth}_{context_num}_{num_fields}_{'grouped' if homka_group_automata else 'ungrouped'}_{'exploded' if explode_indices else 'unexploded'}"
+        # if exists file
+        if os.path.exists(grammar_path):
+            grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
+        else:
+            grammar = generate_intersection_cfg(context_num, depth, num_fields).to_cnf_template(homka_group_automata)
+            need_save = True
     else:
         grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
 
@@ -67,39 +74,42 @@ def run_all_pairs_cflr(
         if homka_group_automata:
             graph.group_contexts()
         old_grammar: CnfGrammarTemplate = CnfGrammarTemplate(grammar.start_nonterm, grammar.epsilon_rules, grammar.simple_rules, grammar.complex_rules)
-        if homka_group_automata:
-            grammar.group_rules({"(i": [f"({i+1}" for i in range(graph.contexts_num)], ")i": [f"){i+1}" for i in range(graph.contexts_num)]})
-        if not explode_indices:  # IndexExplodingPreProcessorSetting
-            grammar.group_rules(
-                {
-                    # "load_i": [f"load_f{i}" for i in range(graph.block_matrix_space.block_count)],
-                    # "load_r_i": [f"load_f{i}_r" for i in range(graph.block_matrix_space.block_count)],
-                    # "store_i": [f"store_f{i}" for i in range(graph.block_matrix_space.block_count)],
-                    # "store_r_i": [f"store_f{i}_r" for i in range(graph.block_matrix_space.block_count)],
-                    "S_7_G0_i": [f"S_{7 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
-                    "S_7_G1_i": [f"S_{7 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
-                    "S_7_G2_i": [f"S_{7 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
-                    "S_7_G3_i": [f"S_{7 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
-                    "S_7_G4_i": [f"S_{7 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
-                    "S_8_G0_i": [f"S_{8 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
-                    "S_8_G1_i": [f"S_{8 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
-                    "S_8_G2_i": [f"S_{8 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
-                    "S_8_G3_i": [f"S_{8 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
-                    "S_8_G4_i": [f"S_{8 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
-                    "S_9_G0_i": [f"S_{9 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
-                    "S_9_G1_i": [f"S_{9 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
-                    "S_9_G2_i": [f"S_{9 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
-                    "S_9_G3_i": [f"S_{9 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
-                    "S_9_G4_i": [f"S_{9 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
-                    "S_10_G0_i": [f"S_{10 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
-                    "S_10_G1_i": [f"S_{10 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
-                    "S_10_G2_i": [f"S_{10 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
-                    "S_10_G3_i": [f"S_{10 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
-                    "S_10_G4_i": [f"S_{10 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
-                }
-            )
+        if need_save:
+            if homka_group_automata:
+                grammar.group_rules({"(i": [f"({i+1}" for i in range(graph.contexts_num)], ")i": [f"){i+1}" for i in range(graph.contexts_num)]})
+            if not explode_indices:  # IndexExplodingPreProcessorSetting
+                grammar.group_rules(
+                    {
+                        # "load_i": [f"load_f{i}" for i in range(graph.block_matrix_space.block_count)],
+                        # "load_r_i": [f"load_f{i}_r" for i in range(graph.block_matrix_space.block_count)],
+                        # "store_i": [f"store_f{i}" for i in range(graph.block_matrix_space.block_count)],
+                        # "store_r_i": [f"store_f{i}_r" for i in range(graph.block_matrix_space.block_count)],
+                        "S_7_G0_i": [f"S_{7 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
+                        "S_7_G1_i": [f"S_{7 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
+                        "S_7_G2_i": [f"S_{7 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
+                        "S_7_G3_i": [f"S_{7 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
+                        "S_7_G4_i": [f"S_{7 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
+                        "S_8_G0_i": [f"S_{8 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
+                        "S_8_G1_i": [f"S_{8 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
+                        "S_8_G2_i": [f"S_{8 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
+                        "S_8_G3_i": [f"S_{8 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
+                        "S_8_G4_i": [f"S_{8 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
+                        "S_9_G0_i": [f"S_{9 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
+                        "S_9_G1_i": [f"S_{9 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
+                        "S_9_G2_i": [f"S_{9 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
+                        "S_9_G3_i": [f"S_{9 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
+                        "S_9_G4_i": [f"S_{9 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
+                        "S_10_G0_i": [f"S_{10 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
+                        "S_10_G1_i": [f"S_{10 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
+                        "S_10_G2_i": [f"S_{10 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
+                        "S_10_G3_i": [f"S_{10 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
+                        "S_10_G4_i": [f"S_{10 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
+                    }
+                )
         print(f"Compression rate: {len(grammar.complex_rules)}/{len(old_grammar.complex_rules)}")
     graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
+    if need_save:
+        grammar.write_to_pocr_cnf_file(grammar_path, include_starting=True)
     try:
         with time_limit(time_limit_sec):
             start = time()
