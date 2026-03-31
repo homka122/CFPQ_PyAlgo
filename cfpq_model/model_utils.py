@@ -45,7 +45,15 @@ def explode_indices(graph: LabelDecomposedGraph, grammar: CnfGrammarTemplate) ->
             complex_rules.append((non_terminal, symbol1, symbol2))
 
     return (
-        LabelDecomposedGraph(vertex_count=graph.vertex_count, block_matrix_space=block_matrix_space, dtype=graph.dtype, matrices=matrices),
+        LabelDecomposedGraph(
+            vertex_count=graph.vertex_count,
+            block_matrix_space=block_matrix_space,
+            dtype=graph.dtype,
+            matrices=matrices,
+            contexts_num=graph.contexts_num,
+            depth=graph.depth,
+            group=graph.group,
+        ),
         CnfGrammarTemplate(start_nonterm=grammar.start_nonterm, epsilon_rules=epsilon_rules, simple_rules=simple_rules, complex_rules=complex_rules),
     )
 

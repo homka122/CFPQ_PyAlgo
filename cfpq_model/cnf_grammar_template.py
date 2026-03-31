@@ -88,7 +88,9 @@ class CnfGrammarTemplate:
         visited: set[tuple[str, str, str]] = set()
         for lhs, rhs1, rhs2 in self.complex_rules:
             if lhs.label not in replaced_symbols and rhs1.label not in replaced_symbols and rhs2.label not in replaced_symbols:
-                new_complex_rules.append((lhs, rhs1, rhs2))
+                if not (lhs.label, rhs1.label, rhs2.label) in visited:
+                    new_complex_rules.append((lhs, rhs1, rhs2))
+                    visited.add((lhs.label, rhs1.label, rhs2.label))
                 continue
 
             new_lhs, new_rhs1, new_rhs2 = lhs.label, rhs1.label, rhs2.label

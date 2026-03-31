@@ -41,13 +41,23 @@ class LabelDecomposedGraph:
     `block_matrix_space.block_count` is the largest "label index" in the entire graph.
     """
 
-    def __init__(self, vertex_count: int, block_matrix_space: BlockMatrixSpace, dtype: DataType, matrices: Dict[Symbol, Matrix], contexts_num: int, depth: int):
+    def __init__(
+        self,
+        vertex_count: int,
+        block_matrix_space: BlockMatrixSpace,
+        dtype: DataType,
+        matrices: Dict[Symbol, Matrix],
+        contexts_num: int,
+        depth: int,
+        group: bool,
+    ):
         self.vertex_count: int = vertex_count
         self.block_matrix_space: BlockMatrixSpace = block_matrix_space
         self.dtype: DataType = dtype
         self.matrices: dict[Symbol, Matrix] = matrices
         self.contexts_num: int = contexts_num
         self.depth: int = depth
+        self.group: bool = group
 
     @property
     def nvals(self) -> int:
@@ -76,7 +86,7 @@ class LabelDecomposedGraph:
                 del self.matrices[Symbol(f"){i}")]
 
     @staticmethod
-    def read_from_pocr_graph_file(path: Union[Path, str], contexts_num: int, depth: int) -> "LabelDecomposedGraph":
+    def read_from_pocr_graph_file(path: Union[Path, str], contexts_num: int, depth: int, is_group: bool) -> "LabelDecomposedGraph":
         try:
             dfs = pd.read_csv(
                 path,
@@ -142,6 +152,7 @@ class LabelDecomposedGraph:
                 matrices=matrices,
                 contexts_num=contexts_num,
                 depth=depth,
+                group=is_group,
             )
         except Exception as e:
             raise ValueError(
@@ -189,6 +200,7 @@ class OptimizedLabelDecomposedGraph:
         matrix_optimizer: Callable[[Matrix], OptimizedMatrix],
         contexts_num: int,
         depth: int,
+        group: bool,
     ):
         self.vertex_count: int = vertex_count
         self.block_matrix_space: BlockMatrixSpace = block_matrix_space
@@ -197,6 +209,7 @@ class OptimizedLabelDecomposedGraph:
         self.matrices: Dict[Symbol, OptimizedMatrix] = {}
         self.contexts_num: int = contexts_num
         self.depth: int = depth
+        self.group: bool = group
 
     @staticmethod
     def from_unoptimized(unoptimized_graph: LabelDecomposedGraph, matrix_optimizer: Callable[[Matrix], OptimizedMatrix]) -> "OptimizedLabelDecomposedGraph":
@@ -207,6 +220,7 @@ class OptimizedLabelDecomposedGraph:
             matrix_optimizer=matrix_optimizer,
             contexts_num=unoptimized_graph.contexts_num,
             depth=unoptimized_graph.depth,
+            group=unoptimized_graph.group,
         )
 
         for symbol, matrix in unoptimized_graph.matrices.items():
@@ -217,6 +231,9 @@ class OptimizedLabelDecomposedGraph:
             #     unoptimized_graph.contexts_num,
             #     depth=PointsToMatrix.get_depth_from_symbol(symbol.label),
             # )
+            if not optimized_graph.group:
+                optimized_graph.matrices[symbol] = unoptimized_graph.block_matrix_space.automize_block_operations(MatrixToOptimizedAdapter(matrix))
+                continue
             type = PointsToMatrix.get_type_from_symbol(symbol.label)
             depth_local = PointsToMatrix.get_depth_from_symbol(symbol.label)
             # if type == "State":
@@ -248,6 +265,7 @@ class OptimizedLabelDecomposedGraph:
             dtype=self.dtype,
             contexts_num=self.contexts_num,
             depth=self.depth,
+            group=self.group,
         )
 
     def to_unoptimized(self) -> LabelDecomposedGraph:
@@ -258,6 +276,7 @@ class OptimizedLabelDecomposedGraph:
             dtype=self.dtype,
             contexts_num=self.contexts_num,
             depth=self.depth,
+            group=self.group,
         )
 
     @property
@@ -300,9 +319,16 @@ class OptimizedLabelDecomposedGraph:
             dtype=self.dtype,
             contexts_num=self.contexts_num,
             depth=self.depth,
+            group=self.group,
         )
 
-        result.matrices = {symbol: (self.matrices[symbol].rsub(matrix, op) if symbol in self else matrix) for symbol, matrix in other.matrices.items()}
+        if not self.group:
+            result.matrices = {
+                symbol: (self.block_matrix_space.automize_block_operations(self.matrices[symbol].rsub(matrix, op)) if symbol in self else matrix)
+                for symbol, matrix in other.matrices.items()
+            }
+        else:
+            result.matrices = {symbol: (self.matrices[symbol].rsub(matrix, op) if symbol in self else matrix) for symbol, matrix in other.matrices.items()}
 
         return result
 
@@ -322,6 +348,15 @@ class OptimizedLabelDecomposedGraph:
             if swap_operands:
                 rhs1, rhs2 = rhs2, rhs1
             if rhs1 in self.matrices and rhs2 in other.matrices:
+                if not self.group:
+                    mxm = self.matrices[rhs1].mxm(
+                        other.matrices[rhs2],
+                        swap_operands=swap_operands,
+                        op=op,
+                    )
+                    mxm = self.block_matrix_space.automize_block_operations(mxm)
+                    accum.iadd_by_symbol(lhs, mxm, op.monoid)
+                    continue
                 left = self.matrices[leftrhs]
                 right = other.matrices[rightrhs]
 
@@ -331,9 +366,8 @@ class OptimizedLabelDecomposedGraph:
                     op=op,
                 )
 
-                if (
-                    leftrhs.label.startswith(")")
-                    and (PointsToMatrix.get_depth_from_symbol(lhs.label) == 0 or PointsToMatrix.get_depth_from_symbol(lhs.label) == self.depth + 1)
+                if leftrhs.label.startswith(")") and (
+                    PointsToMatrix.get_depth_from_symbol(lhs.label) == 0 or PointsToMatrix.get_depth_from_symbol(lhs.label) == self.depth + 1
                 ):
                     assert isinstance(left, PointsToMatrix) and isinstance(right, PointsToMatrix)
                     if rightrhs.label == "S_10_G0_i":
@@ -384,6 +418,13 @@ class OptimizedLabelDecomposedGraph:
         return self.mxm(other, grammar, op, accum, swap_operands=True)
 
     def __getitem__(self, symbol: Symbol) -> OptimizedMatrix:
+        if not self.group:
+            return (
+                self.matrices[symbol]
+                if symbol in self
+                else self.block_matrix_space.automize_block_operations(MatrixToOptimizedAdapter(self._create_matrix_for_symbol(symbol)))
+            )
+
         if symbol in self:
             return self.matrices[symbol]
 
@@ -403,8 +444,11 @@ class OptimizedLabelDecomposedGraph:
             if symbol.label == "(i":
                 nrows = self.vertex_count
                 ncols = self.vertex_count * (self.contexts_num)
-            else:
+            elif symbol.label == ")i":
                 nrows = self.vertex_count * (self.contexts_num)
+                ncols = self.vertex_count
+            else:
+                nrows = self.vertex_count
                 ncols = self.vertex_count
 
         nrows_base = nrows

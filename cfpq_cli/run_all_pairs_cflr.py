@@ -33,55 +33,72 @@ def run_all_pairs_cflr(
     homka_depth=None,
     homka_generate_grammar=None,
     homka_num_fields=None,
+    homka_group_automata=True,
+    explode_indices=False,
     depth=1,
 ):
     if trace_graphblas:
         graphblas.ss.burble.enable()
     total_start = time()
     algo = get_all_pairs_cfl_reachability_algo(algo_name)
+    
     if homka_generate_grammar is not None:
         if homka_num_contexts is None or homka_depth is None:
             raise ValueError("homka_num_contexts and homka_depth must be specified when homka_generate_grammar is specified")
         context_num = homka_num_contexts
         depth = homka_depth
-        num_fields = homka_num_fields
-        grammar = generate_intersection_cfg(context_num, depth, num_fields).to_cnf_template()
     else:
-        grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
-
+        context_num = 0
+        depth = 0
+        homka_group_automata = False
+    
     if add_contexts:
         graph, initial_graph_nvertices = add_context(graph_path, max_num_of_contexts, depth)
     else:
-        graph = LabelDecomposedGraph.read_from_pocr_graph_file(graph_path, context_num, depth)
-        if homka_generate_grammar:
+        graph = LabelDecomposedGraph.read_from_pocr_graph_file(graph_path, context_num, depth, homka_group_automata)
+
+    if homka_generate_grammar is not None:
+        num_fields = graph.block_matrix_space.block_count
+        grammar = generate_intersection_cfg(context_num, depth, num_fields).to_cnf_template(homka_group_automata)
+    else:
+        grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
+
+    if homka_generate_grammar:
+        if homka_group_automata:
             graph.group_contexts()
-            old_grammar: CnfGrammarTemplate = CnfGrammarTemplate(grammar.start_nonterm, grammar.epsilon_rules, grammar.simple_rules, grammar.complex_rules)
+        old_grammar: CnfGrammarTemplate = CnfGrammarTemplate(grammar.start_nonterm, grammar.epsilon_rules, grammar.simple_rules, grammar.complex_rules)
+        if homka_group_automata:
             grammar.group_rules({"(i": [f"({i+1}" for i in range(graph.contexts_num)], ")i": [f"){i+1}" for i in range(graph.contexts_num)]})
+        if not explode_indices:  # IndexExplodingPreProcessorSetting
             grammar.group_rules(
                 {
                     "load_i": [f"load_f{i+1}" for i in range(graph.block_matrix_space.block_count)],
                     "load_r_i": [f"load_f{i+1}_r" for i in range(graph.block_matrix_space.block_count)],
                     "store_i": [f"store_f{i+1}" for i in range(graph.block_matrix_space.block_count)],
                     "store_r_i": [f"store_f{i+1}_r" for i in range(graph.block_matrix_space.block_count)],
-                    "S_7_G0_i": [f"S_{7 + 4*i}_G0" for i in range(graph.depth)],
-                    "S_7_G1_i": [f"S_{7 + 4*i}_G1" for i in range(graph.depth)],
-                    "S_7_G2_i": [f"S_{7 + 4*i}_G2" for i in range(graph.depth)],
-                    "S_7_G3_i": [f"S_{7 + 4*i}_G3" for i in range(graph.depth)],
-                    "S_8_G0_i": [f"S_{8 + 4*i}_G0" for i in range(graph.depth)],
-                    "S_8_G1_i": [f"S_{8 + 4*i}_G1" for i in range(graph.depth)],
-                    "S_8_G2_i": [f"S_{8 + 4*i}_G2" for i in range(graph.depth)],
-                    "S_8_G3_i": [f"S_{8 + 4*i}_G3" for i in range(graph.depth)],
-                    "S_9_G0_i": [f"S_{9 + 4*i}_G0" for i in range(graph.depth)],
-                    "S_9_G1_i": [f"S_{9 + 4*i}_G1" for i in range(graph.depth)],
-                    "S_9_G2_i": [f"S_{9 + 4*i}_G2" for i in range(graph.depth)],
-                    "S_9_G3_i": [f"S_{9 + 4*i}_G3" for i in range(graph.depth)],
-                    "S_10_G0_i": [f"S_{10 + 4*i}_G0" for i in range(graph.depth)],
-                    "S_10_G1_i": [f"S_{10 + 4*i}_G1" for i in range(graph.depth)],
-                    "S_10_G2_i": [f"S_{10 + 4*i}_G2" for i in range(graph.depth)],
-                    "S_10_G3_i": [f"S_{10 + 4*i}_G3" for i in range(graph.depth)],
+                    "S_7_G0_i": [f"S_{7 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
+                    "S_7_G1_i": [f"S_{7 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
+                    "S_7_G2_i": [f"S_{7 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
+                    "S_7_G3_i": [f"S_{7 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
+                    "S_7_G4_i": [f"S_{7 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
+                    "S_8_G0_i": [f"S_{8 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
+                    "S_8_G1_i": [f"S_{8 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
+                    "S_8_G2_i": [f"S_{8 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
+                    "S_8_G3_i": [f"S_{8 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
+                    "S_8_G4_i": [f"S_{8 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
+                    "S_9_G0_i": [f"S_{9 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
+                    "S_9_G1_i": [f"S_{9 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
+                    "S_9_G2_i": [f"S_{9 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
+                    "S_9_G3_i": [f"S_{9 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
+                    "S_9_G4_i": [f"S_{9 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
+                    "S_10_G0_i": [f"S_{10 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
+                    "S_10_G1_i": [f"S_{10 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
+                    "S_10_G2_i": [f"S_{10 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
+                    "S_10_G3_i": [f"S_{10 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
+                    "S_10_G4_i": [f"S_{10 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
                 }
             )
-            print(f"Compression rate: {len(grammar.complex_rules)}/{len(old_grammar.complex_rules)}")
+        print(f"Compression rate: {len(grammar.complex_rules)}/{len(old_grammar.complex_rules)}")
     graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
     try:
         with time_limit(time_limit_sec):
@@ -161,6 +178,7 @@ def main(raw_args: List[str]):
     parser.add_argument("--homka-num-contexts", dest="homka_num_contexts", default=None, type=int, help="Number of contexts in generated CFG")
     parser.add_argument("--homka-depth", dest="homka_depth", default=None, type=int, help="Max depth of contexts in generated CFG")
     parser.add_argument("--homka-num-fields", dest="homka_num_fields", default=None, type=int, help="Number of fields in generated CFG")
+    parser.add_argument("--homka-not-group-automata", dest="homka_not_group_automata", action="store_true", help="Whether to group contexts in generated CFG")
     settings_manager = AlgoSettingsManager()
     settings_manager.add_args(parser)
     args = parser.parse_args(raw_args)
@@ -179,6 +197,8 @@ def main(raw_args: List[str]):
         homka_depth=args.homka_depth,
         homka_generate_grammar=args.homka_generate_grammar,
         homka_num_fields=args.homka_num_fields,
+        homka_group_automata=not args.homka_not_group_automata,
+        explode_indices=args.explode_indexes,
         settings=settings_manager.read_args(args),
     )
     settings_manager.report_unused()

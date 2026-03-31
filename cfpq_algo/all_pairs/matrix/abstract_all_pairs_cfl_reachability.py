@@ -52,6 +52,10 @@ class AbstractAllPairsCflReachabilityMatrixAlgoInstance(AllPairsCflReachabilityA
             return
         id_matrix = identity_matrix(one=self.algebraic_structure.one, size=self.graph.vertex_count, dtype=self.graph.dtype)
         for non_terminal in self.grammar.epsilon_rules:
+            if not self.graph.group:
+                id_matrix_opt = self.graph.block_matrix_space.automize_block_operations(MatrixToOptimizedAdapter(id_matrix))
+                self.graph.iadd_by_symbol(non_terminal, id_matrix_opt, op=self.monoid)
+                continue
             # TODO
             # self.graph.iadd_by_symbol(non_terminal, self.graph.matrix_optimizer(id_matrix), op=self.monoid)
             type = PointsToMatrix.get_type_from_symbol(non_terminal.label)

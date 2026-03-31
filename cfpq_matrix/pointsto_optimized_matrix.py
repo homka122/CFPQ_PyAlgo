@@ -53,12 +53,21 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
     @staticmethod
     def get_depth_from_symbol(symbol: str) -> int:
         if symbol.startswith(("(", ")")):
-            return 1
+            if "i" in symbol:
+                return 1
+            else:
+                return 0
         elif not symbol.startswith("S"):
             return 0
-        if symbol.endswith("_i"):
-            return int(symbol.split("_")[-2].split("G")[-1])
-        return int(symbol.split("G")[-1])
+        if "G" in symbol:
+            # S_1_G0
+            if symbol.endswith("_i"):
+                return int(symbol.split("_")[-2].split("G")[-1])
+            return int(symbol.split("G")[-1])
+        else:
+            # S_1_(0, 0)
+            return 0
+            # return int(symbol.split("(")[-1].split(",")[0])
 
     # make from matrix with size 1 x nums^(depth) matrix with size nums x nums^(depth-1) if depth != 0
     def _flat_matrix(self) -> None:
@@ -86,6 +95,9 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         )
         self.block_space = new_block_space
 
+    def _get_hyper_vector_shape(self, matrix: Matrix) -> list[Matrix]:
+        return [cell for row in matrix.ss.split((self.n, self.n)) for cell in row]
+
     def _group_matrix(self) -> None:
         if not self._is_flatted():
             return
@@ -94,15 +106,15 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         assert input_shape[0] == 1
         output_shape = (self.context_num, input_shape[1] // self.context_num)
 
-        matrices = self.block_space.get_hyper_vector_blocks(self.base.to_unoptimized())
-        new_matrices: list[Matrix] = []
-        for matrix in matrices:
-            (rows, cols, values) = matrix.to_coo()
-            rows = rows + (cols // self.n % self.context_num * self.n)
-            cols = cols % self.n + cols // (self.n * self.context_num) * self.n
-            new_matrices.append(Matrix.from_coo(rows, cols, values, nrows=output_shape[0] * self.n, ncols=output_shape[1] * self.n))
+        matrices = self._get_hyper_vector_shape(self.base.to_unoptimized())
+        new_matrices: list[list[Matrix]] = [[] for _ in range(output_shape[0])]
+        for index in range(len(matrices) // input_shape[1]):
+            for row in range(output_shape[0]):
+                for col in range(output_shape[1]):
+                    new_matrices[row].append(matrices[col * self.context_num + row + (index * input_shape[1])])
+        new_matrix = graphblas.ss.concat(new_matrices)
 
-        base = MatrixToOptimizedAdapter(self.block_space.stack_into_hyper_column(new_matrices))
+        base = MatrixToOptimizedAdapter(new_matrix)
         assert isinstance(self.base, BlockMatrix)
         new_block_space = BlockMatrixSpaceImpl((output_shape[0] * self.n, output_shape[1] * self.n), self.block_space.block_count)
         self._base = self.base.optimize_similarly_with_block(base, new_block_space)
@@ -239,6 +251,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         self._flat_matrix()
         other._flat_matrix()
 
+        # TODO: it must return MatrixToOptimizedAdapter
         return self.optimize_similarly(self.base.rsub(other.base, op))
 
     def to_unoptimized(self) -> Matrix:
