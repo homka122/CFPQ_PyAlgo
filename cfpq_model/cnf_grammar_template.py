@@ -134,7 +134,7 @@ class CnfGrammarTemplate:
         complex_rules = []
 
         for line in lines:
-            parts = line.split()
+            parts = line.split("\t")
             if len(parts) == 1:
                 epsilon_rules.append(Symbol(parts[0]))
             elif len(parts) == 2:

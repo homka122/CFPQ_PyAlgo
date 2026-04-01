@@ -63,7 +63,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             # S_1_G0
             if symbol.endswith("_i"):
                 return int(symbol.split("_")[-2].split("G")[-1])
-            return int(symbol.split("G")[-1])
+            return int(symbol.split("G")[-1].split("_")[0])
         else:
             # S_1_(0, 0)
             return 0
