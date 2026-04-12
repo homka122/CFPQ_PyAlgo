@@ -66,20 +66,20 @@ class LabelDecomposedGraph:
     def group_contexts(self) -> None:
         tiles_open: list[list[Matrix]] = [[]]
         tiles_close: list[list[Matrix]] = []
-        for i in range(1, self.contexts_num + 1):
+        for i in range(self.contexts_num):
             for key, matrix in self.matrices.items():
                 if key.label == f"({i}":
                     tiles_open[0].append(matrix)
                 elif key.label == f"){i}":
                     tiles_close.append([matrix])
-            if len(tiles_open[0]) != i:
+            if len(tiles_open[0]) != i + 1:
                 tiles_open[0].append(Matrix(self.dtype, self.vertex_count, self.vertex_count))
-            if len(tiles_close) != i:
+            if len(tiles_close) != i + 1:
                 tiles_close.append([Matrix(self.dtype, self.vertex_count, self.vertex_count)])
 
         self.matrices[Symbol("(i")] = graphblas.ss.concat(tiles_open)
         self.matrices[Symbol(")i")] = graphblas.ss.concat(tiles_close)
-        for i in range(1, self.contexts_num + 1):
+        for i in range(self.contexts_num):
             if Symbol(f"({i}") in self.matrices:
                 del self.matrices[Symbol(f"({i}")]
             if Symbol(f"){i}") in self.matrices:
@@ -323,7 +323,7 @@ class OptimizedLabelDecomposedGraph:
         )
 
         if not self.group:
-            result.matrices = {
+            result.matrices: dict[Symbol, OptimizedMatrix] = {
                 symbol: (self.block_matrix_space.automize_block_operations(self.matrices[symbol].rsub(matrix, op)) if symbol in self else matrix)
                 for symbol, matrix in other.matrices.items()
             }
@@ -356,6 +356,7 @@ class OptimizedLabelDecomposedGraph:
                     )
                     mxm = self.block_matrix_space.automize_block_operations(mxm)
                     accum.iadd_by_symbol(lhs, mxm, op.monoid)
+                    # print(accum.nvals)
                     continue
                 left = self.matrices[leftrhs]
                 right = other.matrices[rightrhs]
@@ -410,12 +411,14 @@ class OptimizedLabelDecomposedGraph:
                     )
 
                 accum.iadd_by_symbol(lhs, mxm, op.monoid)
+                # print(accum.nvals)
         return accum
 
     def rmxm(
         self, other: "OptimizedLabelDecomposedGraph", grammar: CnfGrammarTemplate, op: Semiring, accum: Optional["OptimizedLabelDecomposedGraph"] = None
     ) -> "OptimizedLabelDecomposedGraph":
-        return self.mxm(other, grammar, op, accum, swap_operands=True)
+        result = self.mxm(other, grammar, op, accum, swap_operands=True)
+        return result
 
     def __getitem__(self, symbol: Symbol) -> OptimizedMatrix:
         if not self.group:

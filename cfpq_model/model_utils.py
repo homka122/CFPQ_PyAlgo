@@ -8,7 +8,7 @@ def explode_indices(graph: LabelDecomposedGraph, grammar: CnfGrammarTemplate) ->
 
     matrices = {}
     for symbol, matrix in graph.matrices.items():
-        if block_matrix_space.is_single_cell(matrix.shape):
+        if not symbol.is_indexed:
             matrices[symbol] = matrix
         else:
             for i, block in enumerate(block_matrix_space.get_hyper_vector_blocks(matrix)):

@@ -57,7 +57,7 @@ class CnfGrammarTemplate:
         for lhs, rhs1, rhs2 in self.complex_rules:
             yield lhs, rhs1, rhs2
 
-    def group_rules(self, map: dict[str, list[str]]) -> None:
+    def group_rules(self, map: dict[str, set[str]]) -> None:
         """
         Group rules by rhs1 that present in map
 
@@ -83,10 +83,13 @@ class CnfGrammarTemplate:
         TODO: make this more general
         """
         map: dict[str, str] = {old_sym: new_sym for new_sym, old_syms in map.items() for old_sym in old_syms}
-        replaced_symbols = [rhs for rhss in map.items() for rhs in rhss]
+        replaced_symbols: set[str] = {rhs for rhss in map.items() for rhs in rhss}
         new_complex_rules: list[tuple[Symbol, Symbol, Symbol]] = []
         visited: set[tuple[str, str, str]] = set()
-        for lhs, rhs1, rhs2 in self.complex_rules:
+        print(f"Grouping rules...", end="", flush=True)
+        for i, (lhs, rhs1, rhs2) in enumerate(self.complex_rules):
+            if i % 100 == 0:
+                print(f"\rGrouping rules...{i}/{len(self.complex_rules)}", end="", flush=True)
             if lhs.label not in replaced_symbols and rhs1.label not in replaced_symbols and rhs2.label not in replaced_symbols:
                 if not (lhs.label, rhs1.label, rhs2.label) in visited:
                     new_complex_rules.append((lhs, rhs1, rhs2))
@@ -106,6 +109,7 @@ class CnfGrammarTemplate:
 
             visited.add((new_lhs, new_rhs1, new_rhs2))
             new_complex_rules.append((Symbol(new_lhs), Symbol(new_rhs1), Symbol(new_rhs2)))
+        print(f"\rGrouping rules...Done!                                   ", flush=True)
         self.complex_rules = new_complex_rules
 
     @staticmethod
