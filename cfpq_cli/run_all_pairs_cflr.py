@@ -225,28 +225,57 @@ def main(raw_args: List[str]):
     parser.add_argument("--homka-depth", dest="homka_depth", default=None, type=int, help="Max depth of contexts in generated CFG")
     parser.add_argument("--homka-num-fields", dest="homka_num_fields", default=None, type=int, help="Number of fields in generated CFG")
     parser.add_argument("--homka-not-group-automata", dest="homka_not_group_automata", action="store_true", help="Whether to group contexts in generated CFG")
+    parser.add_argument(
+        "--homka-all-combinations", dest="homka_all_combinations", action="store_true", help="Whether to try all combinations of homka settings"
+    )
     settings_manager = AlgoSettingsManager()
     settings_manager.add_args(parser)
     args = parser.parse_args(raw_args)
-    run_all_pairs_cflr(
-        algo_name=args.algo,
-        graph_path=args.graph,
-        grammar_path=args.grammar,
-        add_contexts=args.add_contexts,
-        trace_graphblas=args.trace_graphblas,
-        expected_path=args.expected_path,
-        time_limit_sec=args.time_limit,
-        out_path=args.out,
-        max_num_of_contexts=args.max_num_of_contexts,
-        depth=args.depth,
-        homka_num_contexts=args.homka_num_contexts,
-        homka_depth=args.homka_depth,
-        homka_generate_grammar=args.homka_generate_grammar,
-        homka_num_fields=args.homka_num_fields,
-        homka_group_automata=not args.homka_not_group_automata,
-        explode_indices=args.explode_indexes,
-        settings=settings_manager.read_args(args),
-    )
+    if args.homka_all_combinations:
+        for homka_group_automata in [False, True]:
+            for explode_indices in [True, False]:
+                print(f"Running with settings: homka_group_automata={homka_group_automata}, group_RSM={not explode_indices}")
+                args.explode_indexes = explode_indices
+                args.homka_not_group_automata = not homka_group_automata
+                run_all_pairs_cflr(
+                    algo_name=args.algo,
+                    graph_path=args.graph,
+                    grammar_path=args.grammar,
+                    add_contexts=args.add_contexts,
+                    trace_graphblas=args.trace_graphblas,
+                    expected_path=args.expected_path,
+                    time_limit_sec=args.time_limit,
+                    out_path=args.out,
+                    max_num_of_contexts=args.max_num_of_contexts,
+                    depth=args.depth,
+                    homka_num_contexts=args.homka_num_contexts,
+                    homka_depth=args.homka_depth,
+                    homka_generate_grammar=args.homka_generate_grammar,
+                    homka_num_fields=args.homka_num_fields,
+                    homka_group_automata=not args.homka_not_group_automata,
+                    explode_indices=args.explode_indexes,
+                    settings=settings_manager.read_args(args),
+                )
+    else:
+        run_all_pairs_cflr(
+            algo_name=args.algo,
+            graph_path=args.graph,
+            grammar_path=args.grammar,
+            add_contexts=args.add_contexts,
+            trace_graphblas=args.trace_graphblas,
+            expected_path=args.expected_path,
+            time_limit_sec=args.time_limit,
+            out_path=args.out,
+            max_num_of_contexts=args.max_num_of_contexts,
+            depth=args.depth,
+            homka_num_contexts=args.homka_num_contexts,
+            homka_depth=args.homka_depth,
+            homka_generate_grammar=args.homka_generate_grammar,
+            homka_num_fields=args.homka_num_fields,
+            homka_group_automata=not args.homka_not_group_automata,
+            explode_indices=args.explode_indexes,
+            settings=settings_manager.read_args(args),
+        )
     settings_manager.report_unused()
 
 
