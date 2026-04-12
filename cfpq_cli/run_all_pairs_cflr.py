@@ -18,6 +18,45 @@ from cfpq_add_context.kron_intersection import generate_intersection_cfg
 import graphblas
 
 
+def convert_graph(num_contexts: int, graph_path: str) -> str:
+    with open(graph_path, "r") as file:
+        new_file_name = f"/tmp/{os.path.basename(graph_path).split('.')[0]}_new_indexed_{num_contexts}.g"
+        with open(new_file_name, "w") as new_file:
+            for line in file:
+                line = line.strip()
+                if "_r" in line and ("open" in line or "close" in line):
+                    continue
+
+                splitted = line.split("\t")
+                if len(splitted) < 2:
+                    continue
+
+                frm = splitted[0]
+                to = splitted[1]
+                label = splitted[2]
+                if len(label.split(" ")) > 1:
+                    label = label.split(" ")
+                    if label[0] == "store_i":
+                        new_file.write(f"{frm}\t{to}\tstore_i\t{label[1]}\n")
+                    if label[0] == "load_i":
+                        new_file.write(f"{frm}\t{to}\tload_i\t{label[1]}\n")
+                    if label[0] == "store_r_i":
+                        new_file.write(f"{frm}\t{to}\tstore_r_i\t{label[1]}\n")
+                    if label[0] == "load_r_i":
+                        new_file.write(f"{frm}\t{to}\tload_r_i\t{label[1]}\n")
+                    continue
+
+                if "open" in label:
+                    context = int(label.split("_")[1]) % num_contexts
+                    new_file.write(f"{frm}\t{to}\t({str(context)}\n")
+                elif "close" in label:
+                    context = int(label.split("_")[1]) % num_contexts
+                    new_file.write(f"{frm}\t{to}\t){str(context)}\n")
+                else:
+                    new_file.write(f"{frm}\t{to}\t{label}\n")
+
+    return new_file_name
+
 def run_all_pairs_cflr(
     algo_name: str,
     graph_path: str,
@@ -55,6 +94,10 @@ def run_all_pairs_cflr(
     if add_contexts:
         graph, initial_graph_nvertices = add_context(graph_path, max_num_of_contexts, depth)
     else:
+        if homka_generate_grammar:
+            graph_path = convert_graph(context_num, graph_path)
+        else:
+            graph_path = graph_path
         graph = LabelDecomposedGraph.read_from_pocr_graph_file(graph_path, context_num, depth, homka_group_automata)
 
     need_save = False
@@ -76,40 +119,32 @@ def run_all_pairs_cflr(
         old_grammar: CnfGrammarTemplate = CnfGrammarTemplate(grammar.start_nonterm, grammar.epsilon_rules, grammar.simple_rules, grammar.complex_rules)
         if need_save:
             if homka_group_automata:
-                grammar.group_rules({"(i": [f"({i+1}" for i in range(graph.contexts_num)], ")i": [f"){i+1}" for i in range(graph.contexts_num)]})
-            if not explode_indices:  # IndexExplodingPreProcessorSetting
-                grammar.group_rules(
-                    {
-                        # "load_i": [f"load_f{i}" for i in range(graph.block_matrix_space.block_count)],
-                        # "load_r_i": [f"load_f{i}_r" for i in range(graph.block_matrix_space.block_count)],
-                        # "store_i": [f"store_f{i}" for i in range(graph.block_matrix_space.block_count)],
-                        # "store_r_i": [f"store_f{i}_r" for i in range(graph.block_matrix_space.block_count)],
-                        "S_7_G0_i": [f"S_{7 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
-                        "S_7_G1_i": [f"S_{7 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
-                        "S_7_G2_i": [f"S_{7 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
-                        "S_7_G3_i": [f"S_{7 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
-                        "S_7_G4_i": [f"S_{7 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
-                        "S_8_G0_i": [f"S_{8 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
-                        "S_8_G1_i": [f"S_{8 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
-                        "S_8_G2_i": [f"S_{8 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
-                        "S_8_G3_i": [f"S_{8 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
-                        "S_8_G4_i": [f"S_{8 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
-                        "S_9_G0_i": [f"S_{9 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
-                        "S_9_G1_i": [f"S_{9 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
-                        "S_9_G2_i": [f"S_{9 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
-                        "S_9_G3_i": [f"S_{9 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
-                        "S_9_G4_i": [f"S_{9 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
-                        "S_10_G0_i": [f"S_{10 + 4*i}_G0" for i in range(graph.block_matrix_space.block_count)],
-                        "S_10_G1_i": [f"S_{10 + 4*i}_G1" for i in range(graph.block_matrix_space.block_count)],
-                        "S_10_G2_i": [f"S_{10 + 4*i}_G2" for i in range(graph.block_matrix_space.block_count)],
-                        "S_10_G3_i": [f"S_{10 + 4*i}_G3" for i in range(graph.block_matrix_space.block_count)],
-                        "S_10_G4_i": [f"S_{10 + 4*i}_G4" for i in range(graph.block_matrix_space.block_count)],
-                    }
-                )
-        print(f"Compression rate: {len(grammar.complex_rules)}/{len(old_grammar.complex_rules)}")
-    graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
-    if need_save:
-        grammar.write_to_pocr_cnf_file(grammar_path, include_starting=True)
+                grammar.group_rules({"(i": set([f"({i}" for i in range(graph.contexts_num)]), ")i": set([f"){i}" for i in range(graph.contexts_num)])})
+            mapped_rules: dict[str, set[str]] = {}
+            # for str in ["load_i", "store_i"]:
+            #     mapped_rules[str] = [f"{str[:-2]}_f{i}" for i in range(graph.block_matrix_space.block_count)]
+            # for str in ["load_r_i", "store_r_i"]:
+            #     mapped_rules[str] = [f"{str[:-4]}_f{i}_r" for i in range(graph.block_matrix_space.block_count)]
+            for rsm_state in [7, 8, 9, 10]:
+                for automata_depth in range(depth + 2):
+                    if homka_group_automata:
+                        mapped_rules[f"S_{rsm_state}_G{automata_depth}_i"] = set(
+                            [f"S_{rsm_state + 4*i}_G{automata_depth}" for i in range(graph.block_matrix_space.block_count)]
+                        )
+                    else:
+                        for automata_index in range(context_num**automata_depth):
+                            mapped_rules[f"S_{rsm_state}_({automata_depth}, {automata_index})_i"] = set(
+                                [f"S_{rsm_state + 4*i}_({automata_depth}, {automata_index})" for i in range(graph.block_matrix_space.block_count)]
+                            )
+
+            grammar.group_rules(mapped_rules)
+        if explode_indices:
+            graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
+    else:
+        graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
+    # if need_save:
+        # grammar.write_to_pocr_cnf_file(grammar_path, include_starting=True)
+    print(f"Grammar size: {len(grammar.complex_rules)}", flush=True)
     try:
         with time_limit(time_limit_sec):
             start = time()
@@ -131,6 +166,7 @@ def run_all_pairs_cflr(
                         out_file.write(f"{source}\t{target}\n")
             print("Graph name: ", graph_path)
             print("Total execution time = ", time() - total_start)
+            print()
     except TimeoutException:
         print("AnalysisTime\tNaN")
         print("#SEdges\tNaN")
