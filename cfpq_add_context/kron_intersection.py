@@ -1,3 +1,4 @@
+import sys
 import os
 import types
 from enum import auto
@@ -433,14 +434,14 @@ class Automata:
         edges = open_matrix.to_edgelist()
         edges = zip(edges[0], edges[1])
         for _edg, _lbl in edges:
-            self.add_open(_edg[0], _lbl, _edg[1])
+            self.add_open(_edg[0], _lbl - 1, _edg[1])
 
         close_matrix = Matrix(UINT64, graph_generated.nrows, graph_generated.ncols, name="close matrix")
         close_matrix << graph_generated.apply(graphblas.unary.decode_close).select(">", 0)
         edges = close_matrix.to_edgelist()
         edges = zip(edges[0], edges[1])
         for _edg, _lbl in edges:
-            self.add_closed(_edg[0], _lbl, _edg[1])
+            self.add_closed(_edg[0], _lbl - 1, _edg[1])
 
         all_open_matrix = Matrix(UINT64, graph_generated.nrows, graph_generated.ncols, name="all open matrix")
         all_open_matrix << graph_generated.select("select_all_pass")
@@ -726,12 +727,14 @@ class CFGIntersection:
         self.binary_rules = new_binary_rules
 
     def iter_rules(self) -> Iterable[tuple[_Sym, _Sym | None, _Sym | None]]:
+        result = []
         for lhs, rhs in self.simple_rules:
-            yield (lhs, rhs, None)
+            result.append((lhs, rhs, None))
         for lhs, rhs1, rhs2 in self.binary_rules:
-            yield (lhs, rhs1, rhs2)
+            result.append((lhs, rhs1, rhs2))
         for lhs in self.epsilon_rules:
-            yield (lhs, None, None)
+            result.append((lhs, None, None))
+        return result
 
     def check_property_complex(self, func: Callable[[_Sym, _Sym, _Sym], bool]) -> bool:
         result = True
@@ -814,6 +817,7 @@ class CFGIntersection:
 
 
 def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM) -> CFGIntersection:
+    print("Generating cfg...", end="")
     automata = Automata()
     rsm = PointsToRSM(RSM_FIELDS_NUM)
 
@@ -899,7 +903,9 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
     FlowsTo_states = rsm.get_FlowsTo_states()
     Alias_states = rsm.get_Alias_states()
     for i, label in enumerate(labels):
-        print(f"label: {i}/{len(labels)}")
+        # print(f"label: {i}/{len(labels)}")
+        print(f"\rGenerating cfg...{i}/{len(labels)}", end="")
+        sys.stdout.flush()
         edges = kron[i].to_edgelist()
         edgesZipped = list(zip(edges[0], edges[1]))
         result = ""
@@ -929,6 +935,9 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
             box.states.add(newState0)
             box.states.add(newState1)
             box.edges.append((newState0, newLabel, newState1))
+    print("\rGenerating cfg...Done!            ")
+    sys.stdout.flush()
+
 
     w_box("digraph g {")
     w_box(boxPointsTo.to_dot_cluster())
