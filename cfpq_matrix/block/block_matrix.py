@@ -102,7 +102,7 @@ class VectorBlockMatrix(BlockMatrix):
         )
         if other.block_matrix_space.is_single_cell(other.shape):
             return self._force_init_orientation(BlockMatrixOrientation.HORIZONTAL if swap_operands else BlockMatrixOrientation.VERTICAL).mxm(
-                other, op, swap_operands=swap_operands
+                other.base, op, swap_operands=swap_operands
             )
         return self._force_init_orientation(BlockMatrixOrientation.VERTICAL if swap_operands else BlockMatrixOrientation.HORIZONTAL).mxm(
             MatrixToOptimizedAdapter(other.block_matrix_space.to_block_diag_matrix(other.to_unoptimized())), op=op, swap_operands=swap_operands

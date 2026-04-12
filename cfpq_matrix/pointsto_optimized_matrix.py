@@ -222,14 +222,14 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
             if not swap_operands:
                 assert isinstance(other.base, BlockMatrix)
-                diag = self.get_block_diag_matrix(other, self.n)
+                diag = other.get_block_diag_matrix(other, self.n)
                 assert isinstance(diag, BlockMatrix)
                 return self.base.mxm(diag, op, swap_operands=swap_operands)
             if swap_operands:
                 assert isinstance(other.base, BlockMatrix)
                 diag = self.get_block_diag_matrix(self, self.n)
                 assert isinstance(diag, BlockMatrix)
-                return diag.mxm(self.base, op, swap_operands=swap_operands)
+                return diag.mxm(other.base, op, swap_operands=swap_operands)
 
             return self.base.mxm(other.base, op, swap_operands=swap_operands)
         else:
