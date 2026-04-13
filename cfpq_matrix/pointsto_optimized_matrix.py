@@ -124,7 +124,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
     def get_block_diag_matrix(matrix: OptimizedMatrix, graph_size: int) -> OptimizedMatrix:
         # assert matrix.shape[0] == graph_size
         assert isinstance(matrix, PointsToMatrix)
-        
+
         matrices = matrix.block_space.get_hyper_vector_blocks(matrix.base.to_unoptimized())
         new_cell_shape = (matrices[0].shape[1], matrices[0].shape[1])
         new_matrices: list[Matrix] = []
@@ -141,20 +141,32 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
     def get_hyper_column(matrix: OptimizedMatrix, count: int) -> OptimizedMatrix:
         assert isinstance(matrix, PointsToMatrix)
         assert isinstance(matrix.base, BlockMatrix)
-        base = matrix.to_unoptimized()
-        matrices = [[base] for _ in range(count)]
+        matrices = matrix.block_space.get_hyper_vector_blocks(matrix.base.to_unoptimized())
+        new_matrices: list[list[Matrix]] = []
+        for m in matrices:
+            for i in range(count):
+                new_matrices.append([m])
+        # base = matrix.to_unoptimized()
 
-        base_adapter = MatrixToOptimizedAdapter(graphblas.ss.concat(matrices))
+        base_adapter = MatrixToOptimizedAdapter(graphblas.ss.concat(new_matrices))
         new_cell_shape = (matrix.block_space.cell_shape[0] * count, matrix.block_space.cell_shape[1])
         base = matrix.base.optimize_similarly_with_block(base_adapter, BlockMatrixSpaceImpl(new_cell_shape, matrix.base.block_matrix_space.block_count))
         return base
 
     @staticmethod
     def get_hyper_row(matrix: OptimizedMatrix, count: int, vertex_count: int, block_count: int) -> OptimizedMatrix:
-        base = matrix.to_unoptimized()
-        matrices = [[base for _ in range(count)]]
+        assert isinstance(matrix, PointsToMatrix)
+        assert isinstance(matrix.base, BlockMatrix)
+        matrices = matrix.block_space.get_hyper_vector_blocks(matrix.base.to_unoptimized())
+        new_matrices: list[list[Matrix]] = [[]]
+        for m in matrices:
+            for i in range(count):
+                new_matrices[0].append(m)
+
+        # base = matrix.to_unoptimized()
+        # matrices = [[base for _ in range(count)]]
         return BlockMatrixSpaceImpl((vertex_count, vertex_count * count), block_count).automize_block_operations(
-            MatrixToOptimizedAdapter(graphblas.ss.concat(matrices))
+            MatrixToOptimizedAdapter(graphblas.ss.concat(new_matrices))
         )
 
     @staticmethod
