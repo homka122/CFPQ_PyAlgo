@@ -818,7 +818,7 @@ class CFGIntersection:
         return f"CFGIntersection(start={self.start}, rules={len(self.simple_rules) + len(self.binary_rules)})"
 
 
-def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM) -> CFGIntersection:
+def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM, write: bool = False) -> CFGIntersection:
     print("Generating cfg...", end="")
     automata = Automata()
     rsm = PointsToRSM(RSM_FIELDS_NUM)
@@ -850,26 +850,33 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
     cfg_file = open(f"grammars/grammar_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.cnf", mode="w")
 
     def w(text):
+        if not write:
+            return
         print(text, file=file)
 
     def w_cfg(text):
+        if not write:
+            return
         print(text, file=cfg_file)
 
     def w_box(text):
+        if not write:
+            return
         print(text, file=box_file)
 
-    w("digraph g {")
-    w(dot_rsm(rsm_matrices, labels, rsm_start, rsm_finals, "_r", name=f"RSM (Num of fields: {RSM_FIELDS_NUM})"))
-    w(
-        dot_finite_state_machine(
-            automata_matrices,
-            labels,
-            automata_start,
-            automata_finals,
-            "_g",
-            name=f"FSM (Num of contexts: {AUTOMATA_CONTEXT_NUM}, depth: {AUTOMATA_DEPTH})",
+    if write:
+        w("digraph g {")
+        w(dot_rsm(rsm_matrices, labels, rsm_start, rsm_finals, "_r", name=f"RSM (Num of fields: {RSM_FIELDS_NUM})"))
+        w(
+            dot_finite_state_machine(
+                automata_matrices,
+                labels,
+                automata_start,
+                automata_finals,
+                "_g",
+                name=f"FSM (Num of contexts: {AUTOMATA_CONTEXT_NUM}, depth: {AUTOMATA_DEPTH})",
+            )
         )
-    )
 
     kron: list[Matrix] = []
     for i in range(0, len(labels)):
@@ -940,16 +947,16 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
     print("\rGenerating cfg...Done!            ")
     sys.stdout.flush()
 
-
-    w_box("digraph g {")
-    w_box(boxPointsTo.to_dot_cluster())
-    w_box(boxFlowsTo.to_dot_cluster())
-    w_box(boxAlias.to_dot_cluster())
-    w_box("}")
-    # w_cfg(boxPointsTo.to_cfg_str())
-    # w_cfg(boxFlowsTo.to_cfg_str())
-    # w_cfg(boxAlias.to_cfg_str())
-    # w_cfg("\nCount:\nPointsTo_0")
+    if write:
+        w_box("digraph g {")
+        w_box(boxPointsTo.to_dot_cluster())
+        w_box(boxFlowsTo.to_dot_cluster())
+        w_box(boxAlias.to_dot_cluster())
+        w_box("}")
+        # w_cfg(boxPointsTo.to_cfg_str())
+        # w_cfg(boxFlowsTo.to_cfg_str())
+        # w_cfg(boxAlias.to_cfg_str())
+        # w_cfg("\nCount:\nPointsTo_0")
 
     cfg = CFGIntersection(_Sym(0, 0, AUTOMATA_CONTEXT_NUM), AUTOMATA_CONTEXT_NUM)
     rules = boxPointsTo.get_complex_rules() + boxFlowsTo.get_complex_rules() + boxAlias.get_complex_rules()
