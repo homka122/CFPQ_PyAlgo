@@ -41,6 +41,7 @@ class AbstractAllPairsCflReachabilityMatrixAlgoInstance(AllPairsCflReachabilityA
         self.add_epsilon_edges()
         self.add_edges_for_simple_terminal_rules()
         self.compute_transitive_closure()
+        print("result nvals: ", self.graph.nvals)
         return self.graph[self.grammar.start_nonterm].to_unoptimized()
 
     @abstractmethod
