@@ -96,11 +96,13 @@ def run_all_pairs_cflr(
     if add_contexts:
         graph, initial_graph_nvertices = add_context(graph_path, max_num_of_contexts, depth)
     else:
-        if homka_generate_grammar:
+        if homka_generate_grammar and "explicit" in graph_path:
             graph_path = convert_graph(context_num, graph_path)
         else:
             graph_path = graph_path
         graph = LabelDecomposedGraph.read_from_pocr_graph_file(graph_path, context_num, depth, homka_group_automata)
+        if homka_group_automata:
+            graph.group_contexts()
 
     need_save = False
     if homka_generate_grammar is not None:
@@ -109,43 +111,45 @@ def run_all_pairs_cflr(
         # if exists file
         if os.path.exists(grammar_path):
             grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
+            print(f"Original grammar size: {len(grammar.complex_rules)}", flush=True)
         else:
-            grammar = generate_intersection_cfg(context_num, depth, num_fields).to_cnf_template(homka_group_automata)
+            grammar_cfg = generate_intersection_cfg(context_num, depth, num_fields)
+            old_size = len(grammar_cfg.binary_rules)
+            if homka_group_automata:
+                grammar_cfg.group_by_automata_column()
+                grammar = grammar_cfg.to_cnf_template(homka_group_automata)
+                grammar.group_rules({"(i": set([f"({i}" for i in range(graph.contexts_num)]), ")i": set([f"){i}" for i in range(graph.contexts_num)])})
+            else:
+                grammar = grammar_cfg.to_cnf_template(homka_group_automata)
+                
+            if not explode_indices:
+                mapped_rules: dict[str, set[str]] = {}
+                for str in ["load", "store"]:
+                    mapped_rules[f"{str}_i"] = set([f"{str}_i_{i}" for i in range(graph.block_matrix_space.block_count)])
+                for str in ["load_r", "store_r"]:
+                    mapped_rules[f"{str}_i"] = set([f"{str}_i_{i}" for i in range(graph.block_matrix_space.block_count)])
+                for rsm_state in [7, 8, 9, 10]:
+                    for automata_depth in range(depth + 2):
+                        if homka_group_automata:
+                            mapped_rules[f"S_{rsm_state}_G{automata_depth}_i"] = set(
+                                [f"S_{rsm_state + 4*i}_G{automata_depth}" for i in range(graph.block_matrix_space.block_count)]
+                            )
+                        else:
+                            for automata_index in range(context_num**automata_depth):
+                                mapped_rules[f"S_{rsm_state}_({automata_depth}, {automata_index})_i"] = set(
+                                    [f"S_{rsm_state + 4*i}_({automata_depth}, {automata_index})" for i in range(graph.block_matrix_space.block_count)]
+                                )
+
+                grammar.group_rules(mapped_rules)
+            print(f"Compressed grammar size: {len(grammar.complex_rules)} (compression ratio: {old_size / len(grammar.complex_rules)})")
             need_save = True
     else:
         grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
 
-    if homka_generate_grammar:
-        if homka_group_automata:
-            graph.group_contexts()
-        old_grammar: CnfGrammarTemplate = CnfGrammarTemplate(grammar.start_nonterm, grammar.epsilon_rules, grammar.simple_rules, grammar.complex_rules)
-        if need_save:
-            if homka_group_automata:
-                grammar.group_rules({"(i": set([f"({i}" for i in range(graph.contexts_num)]), ")i": set([f"){i}" for i in range(graph.contexts_num)])})
-            mapped_rules: dict[str, set[str]] = {}
-            # for str in ["load_i", "store_i"]:
-            #     mapped_rules[str] = [f"{str[:-2]}_f{i}" for i in range(graph.block_matrix_space.block_count)]
-            # for str in ["load_r_i", "store_r_i"]:
-            #     mapped_rules[str] = [f"{str[:-4]}_f{i}_r" for i in range(graph.block_matrix_space.block_count)]
-            for rsm_state in [7, 8, 9, 10]:
-                for automata_depth in range(depth + 2):
-                    if homka_group_automata:
-                        mapped_rules[f"S_{rsm_state}_G{automata_depth}_i"] = set(
-                            [f"S_{rsm_state + 4*i}_G{automata_depth}" for i in range(graph.block_matrix_space.block_count)]
-                        )
-                    else:
-                        for automata_index in range(context_num**automata_depth):
-                            mapped_rules[f"S_{rsm_state}_({automata_depth}, {automata_index})_i"] = set(
-                                [f"S_{rsm_state + 4*i}_({automata_depth}, {automata_index})" for i in range(graph.block_matrix_space.block_count)]
-                            )
+    graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
 
-            grammar.group_rules(mapped_rules)
-        if explode_indices:
-            graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
-    else:
-        graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
-    # if need_save:
-        # grammar.write_to_pocr_cnf_file(grammar_path, include_starting=True)
+    if need_save:
+        grammar.write_to_pocr_cnf_file(grammar_path, include_starting=True)
     print(f"Grammar size: {len(grammar.complex_rules)}", flush=True)
     try:
         with time_limit(time_limit_sec):
@@ -237,6 +241,8 @@ def main(raw_args: List[str]):
         for homka_group_automata in [False, True]:
             for explode_indices in [True, False]:
                 print(f"Running with settings: homka_group_automata={homka_group_automata}, group_RSM={not explode_indices}")
+                settings_manager = AlgoSettingsManager()
+                args = parser.parse_args(raw_args)
                 args.explode_indexes = explode_indices
                 args.homka_not_group_automata = not homka_group_automata
                 run_all_pairs_cflr(
