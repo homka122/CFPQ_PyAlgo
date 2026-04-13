@@ -58,6 +58,6 @@ def generate(number_of_contexts: int, depth: int, is_log=False) -> Matrix:
     # print("edges: ", edges)
     result = Matrix.from_edgelist(edges, dtype=UINT64, nrows=final + 1, ncols=final + 1, name="automata")
 
-    print_matrix_to_dot(result, "atm.dot")
+    # print_matrix_to_dot(result, "atm.dot")
 
     return result
