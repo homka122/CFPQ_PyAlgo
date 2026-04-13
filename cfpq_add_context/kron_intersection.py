@@ -649,6 +649,11 @@ class _Sym:
 
         return (int(depth), int(group_num) * self.contexts_num + int(group_inner_num))
 
+    def to_grouped_str(self) -> str:
+        if self.is_term:
+            return f"{self.term_label}"
+        return f"S_{self.rsm_state}_G{self.depth}"
+
     def __repr__(self):
         if self.is_term:
             return f"{self.term_label}"
@@ -748,22 +753,19 @@ class CFGIntersection:
 
     def to_cnf_template(self, group: bool) -> CnfGrammarTemplate:
         if group:
-            start_nonterm = Symbol(f"S_{self.start.rsm_state}_G{self.start.depth}")
+            start_nonterm = Symbol(self.start.to_grouped_str())
         else:
             start_nonterm = Symbol(str(self.start))
-        complex_rules: set[tuple[Symbol, Symbol, Symbol]] = set()
-        term_rules: set[tuple[Symbol, Symbol]] = set()
-        epsilon_rules: set[Symbol] = set()
+        complex_rules: list[tuple[Symbol, Symbol, Symbol]] = []
+        term_rules: list[tuple[Symbol, Symbol]] = []
+        epsilon_rules: list[Symbol] = []
         for lhs, rhs1, rhs2 in self.iter_rules():
             if group:
-                lhs = Symbol(f"S_{lhs.rsm_state}_G{lhs.depth}")
+                lhs = Symbol(lhs.to_grouped_str())
                 if rhs1:
-                    if not rhs1.is_term:
-                        rhs1_symbol = Symbol(f"S_{rhs1.rsm_state}_G{rhs1.depth}")
-                    else:
-                        rhs1_symbol = Symbol(rhs1.term_label)
+                    rhs1_symbol = Symbol(rhs1.to_grouped_str())
                 if rhs2:
-                    rhs2_symbol = Symbol(f"S_{rhs2.rsm_state}_G{rhs2.depth}")
+                    rhs2_symbol = Symbol(rhs2.to_grouped_str())
             else:
                 lhs = Symbol(str(lhs))
                 if rhs1:
@@ -772,13 +774,13 @@ class CFGIntersection:
                     rhs2_symbol = Symbol(str(rhs2))
 
             if rhs1 is None and rhs2 is None:
-                epsilon_rules.add(lhs)
+                epsilon_rules.append(lhs)
             elif rhs2 is None:
-                term_rules.add((lhs, rhs1_symbol))
+                term_rules.append((lhs, rhs1_symbol))
             else:
-                complex_rules.add((lhs, rhs1_symbol, rhs2_symbol))
+                complex_rules.append((lhs, rhs1_symbol, rhs2_symbol))
 
-        return CnfGrammarTemplate(start_nonterm, list(epsilon_rules), list(term_rules), list(complex_rules))
+        return CnfGrammarTemplate(start_nonterm, epsilon_rules, term_rules, complex_rules)
 
     def to_text(self) -> str:
         lines: List[str] = []
