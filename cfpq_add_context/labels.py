@@ -38,7 +38,9 @@ def intersection_op(x: int, y: int) -> int:
 #         return 0
 
 BinaryOp.register_new("intersection_op", intersection_op, lazy=True)
-Monoid.register_new("labels_intersection", binary.intersection_op, identity=SIGMA, lazy=True)
+# I don't need it now, but it slows down the start of the program
+if False:
+    Monoid.register_new("labels_intersection", binary.intersection_op, identity=SIGMA, lazy=True)
 
 
 def mk_open_context_from_pass(x: int) -> int:
@@ -211,5 +213,5 @@ UnaryOp.register_new("decode_load", decode_load_op, lazy=True)
 UnaryOp.register_new("decode_load_r", decode_load_r_op, lazy=True)
 UnaryOp.register_new("decode_store", decode_store_op, lazy=True)
 UnaryOp.register_new("decode_store_r", decode_store_r_op, lazy=True)
-UnaryOp.register_new("decode_open", decode_open_op, lazy=False)
-UnaryOp.register_new("decode_close", decode_close_op, lazy=False)
+UnaryOp.register_new("decode_open", decode_open_op, lazy=True)
+UnaryOp.register_new("decode_close", decode_close_op, lazy=True)

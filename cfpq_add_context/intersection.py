@@ -51,7 +51,7 @@ def filter_not_zero_op(x, i, j, k):
     return x > 0
 
 
-SelectOp.register_new("filter_not_zero", filter_not_zero_op)
+SelectOp.register_new("filter_not_zero", filter_not_zero_op, lazy=True)
 
 
 def intersection(graph, automata, is_log=False):
