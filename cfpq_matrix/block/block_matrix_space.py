@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Tuple, List
 
-from graphblas.core.dtypes import DataType
 from graphblas.core.matrix import Matrix
 from graphblas.core.operator import Monoid
 
@@ -80,14 +79,14 @@ class BlockMatrixSpace(ABC):
         pass
 
     @abstractmethod
-    def create_hyper_vector(self, typ: DataType, orientation: BlockMatrixOrientation) -> Matrix:
+    def create_hyper_vector(self, typ, orientation: BlockMatrixOrientation) -> Matrix:
         pass
 
     @abstractmethod
-    def create_cell(self, typ: DataType) -> Matrix:
+    def create_cell(self, typ) -> Matrix:
         pass
 
-    def create_space_element(self, typ: DataType, is_vector: bool) -> Matrix:
+    def create_space_element(self, typ, is_vector: bool) -> Matrix:
         return self.create_hyper_vector(typ, BlockMatrixOrientation.VERTICAL) if is_vector else self.create_cell(typ)
 
     @abstractmethod
