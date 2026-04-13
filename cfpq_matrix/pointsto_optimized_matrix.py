@@ -195,7 +195,8 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         if left.type == "RSM":
             # RSM [1x1] x State [1 x nums^depth] = State [1 x nums^depth]
             right._flat_matrix()
-            return self.base.mxm(other.base, op, swap_operands=swap_operands)
+            base = right.base.optimize_similarly(self.base.mxm(other.base, op, swap_operands=swap_operands))
+            return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
         elif left.type == "Context":
             left_shape = left._get_inner_shape()
             if left_shape[0] == 1:
@@ -206,25 +207,45 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                     if not swap_operands:
                         column = self.get_hyper_column(other, self.context_num)
                         assert isinstance(column, BlockMatrix)
-                        return self.base.mxm(column, op, swap_operands=swap_operands)
+                        base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
+                            self.base.mxm(column, op, swap_operands=swap_operands)
+                        )
+                        return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
+                        # self.block_space.automize_block_operations()
+                        # return BlockMatrix.optimize_similarly_with_block(
+                        # self.base.mxm(column, op, swap_operands=swap_operands), BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count)
+                        # )
                     else:
                         column = self.get_hyper_column(self, self.context_num)
                         assert isinstance(column, BlockMatrix)
-                        return column.mxm(other.base, op, swap_operands=swap_operands)
+                        base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
+                            column.mxm(other.base, op, swap_operands=swap_operands)
+                        )
+                        return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
                 else:
                     # [(_0, ..., (_nums] x State [nums x nums^(depth-1)] = State [1 x nums^(depth-1)]
                     right._group_matrix()
-                    return self.base.mxm(other.base, op, swap_operands=swap_operands)
+                    shape = right._get_inner_shape()
+                    base = BlockMatrixSpaceImpl((self.n, self.n * shape[1]), self.block_space.block_count).automize_block_operations(
+                        self.base.mxm(other.base, op, swap_operands=swap_operands)
+                    )
+                    return PointsToMatrix(base, "State", self.n, self.context_num, self.depth - 1)
             else:
                 # closed context [)_0, ..., )_nums]^T
                 right_shape = right._get_inner_shape()
                 if right_shape[0] == 1 and right_shape[1] == 1:
                     # [)_0, ..., )_nums]^T x [S] = [)_0*S, ..., )_nums*S]^T
-                    return self.base.mxm(other.base, op, swap_operands=swap_operands)
+                    base = left.base.optimize_similarly(self.base.mxm(other.base, op, swap_operands=swap_operands))
+                    return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
                 else:
-                    # [)_0, ..., )_nums]^T x State [1 x nums^(depth+1)] = State [1 x nums^(depth+1)]
+                    # [)_0, ..., )_nums]^T x State [1 x nums^(depth+1)] = State [nums x nums^(depth+1)]
                     right._flat_matrix()
-                    return self.base.mxm(other.base, op, swap_operands=swap_operands)
+                    shape = right._get_inner_shape()
+                    base = BlockMatrixSpaceImpl((self.n * self.context_num, self.n * shape[1]), self.block_space.block_count).automize_block_operations(
+                        self.base.mxm(other.base, op, swap_operands=swap_operands)
+                    )
+                    return PointsToMatrix(base, "State", self.n, self.context_num, right.depth)
+                    # return self.base.mxm(other.base, op, swap_operands=swap_operands)
         elif left.type == "State":
             # State [1 x nums^depth] x State [1 x nums^depth] = State [1 x nums^depth] (wise multiplication)
             assert left.depth == right.depth
@@ -236,12 +257,14 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                 assert isinstance(other.base, BlockMatrix)
                 diag = other.get_block_diag_matrix(other, self.n)
                 assert isinstance(diag, BlockMatrix)
-                return self.base.mxm(diag, op, swap_operands=swap_operands)
+                base = self.base.optimize_similarly(self.base.mxm(diag, op, swap_operands=swap_operands))
+                return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
             if swap_operands:
                 assert isinstance(other.base, BlockMatrix)
                 diag = self.get_block_diag_matrix(self, self.n)
                 assert isinstance(diag, BlockMatrix)
-                return diag.mxm(other.base, op, swap_operands=swap_operands)
+                base = self.base.optimize_similarly(diag.mxm(other.base, op, swap_operands=swap_operands))
+                return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
 
             return self.base.mxm(other.base, op, swap_operands=swap_operands)
         else:
