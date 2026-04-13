@@ -479,7 +479,7 @@ class PointsToRSM:
         ]
         self.nodes_count: int = 0
         for i in range(self.num_fields):
-            self.labels.extend([f"load_f{i}", f"load_f{i}_r", f"store_f{i}", f"store_f{i}_r"])
+            self.labels.extend([f"load_i_{i}", f"load_r_i_{i}", f"store_i_{i}", f"store_r_i_{i}"])
 
         self.graph: dict[str, list[tuple[int, int]]] = defaultdict(list)
         self._build_graph()
@@ -514,14 +514,14 @@ class PointsToRSM:
 
         for i in range(self.num_fields):
 
-            self.graph[f"load_f{i}"].append((0, self.nodes_count))
+            self.graph[f"load_i_{i}"].append((0, self.nodes_count))
             self.graph["Alias"].append((self.nodes_count, self.nodes_count + 1))
-            self.graph[f"store_f{i}"].append((self.nodes_count + 1, 0))
+            self.graph[f"store_i_{i}"].append((self.nodes_count + 1, 0))
             self.nodes_count += 2
 
-            self.graph[f"store_f{i}_r"].append((3, self.nodes_count))
+            self.graph[f"store_r_i_{i}"].append((3, self.nodes_count))
             self.graph["Alias"].append((self.nodes_count, self.nodes_count + 1))
-            self.graph[f"load_f{i}_r"].append((self.nodes_count + 1, 3))
+            self.graph[f"load_r_i_{i}"].append((self.nodes_count + 1, 3))
             self.nodes_count += 2
 
     def add_other_labels(self, labels: list[str]):
