@@ -49,9 +49,11 @@ def convert_graph(num_contexts: int, graph_path: str) -> str:
                 if "open" in label:
                     context = int(label.split("_")[1]) % num_contexts
                     new_file.write(f"{frm}\t{to}\t({str(context)}\n")
+                    new_file.write(f"{to}\t{frm}\t){str(context)}\n")
                 elif "close" in label:
                     context = int(label.split("_")[1]) % num_contexts
                     new_file.write(f"{frm}\t{to}\t){str(context)}\n")
+                    new_file.write(f"{to}\t{frm}\t({str(context)}\n")
                 else:
                     new_file.write(f"{frm}\t{to}\t{label}\n")
 
