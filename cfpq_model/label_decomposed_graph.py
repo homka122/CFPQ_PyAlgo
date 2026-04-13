@@ -366,16 +366,15 @@ class OptimizedLabelDecomposedGraph:
                     swap_operands=swap_operands,
                     op=op,
                 )
+                assert isinstance(mxm, PointsToMatrix)
 
                 if leftrhs.label.startswith(")") and (
                     PointsToMatrix.get_depth_from_symbol(lhs.label) == 0 or PointsToMatrix.get_depth_from_symbol(lhs.label) == self.depth + 1
                 ):
                     assert isinstance(left, PointsToMatrix) and isinstance(right, PointsToMatrix)
-                    if rightrhs.label == "S_10_G0_i":
-                        pass
-                    new_cell_shape = (left.block_space.cell_shape[0], right.block_space.cell_shape[1])
+                    # new_cell_shape = (left.block_space.cell_shape[0], right.block_space.cell_shape[1])
                     base = PointsToMatrix.reduce_column(
-                        BlockMatrixSpaceImpl(new_cell_shape, self.block_matrix_space.block_count).automize_block_operations(mxm),
+                        mxm.base,
                         op.monoid,
                         self.vertex_count,
                         self.block_matrix_space.block_count,
@@ -391,7 +390,10 @@ class OptimizedLabelDecomposedGraph:
                     mxm = PointsToMatrix(
                         (
                             PointsToMatrix.get_hyper_row(
-                                mxm, self.contexts_num**self.depth, vertex_count=self.vertex_count, block_count=self.block_matrix_space.block_count
+                                mxm,
+                                self.contexts_num**self.depth,
+                                vertex_count=self.vertex_count,
+                                block_count=self.block_matrix_space.block_count,
                             )
                         ),
                         "State",
@@ -403,7 +405,7 @@ class OptimizedLabelDecomposedGraph:
                     assert isinstance(left, PointsToMatrix) and isinstance(right, PointsToMatrix)
                     new_cell_shape = (left.block_space.cell_shape[0], right.block_space.cell_shape[1])
                     mxm = PointsToMatrix(
-                        BlockMatrixSpaceImpl(new_cell_shape, self.block_matrix_space.block_count).automize_block_operations(mxm),
+                        mxm.base,
                         "State",
                         self.vertex_count,
                         self.contexts_num,
