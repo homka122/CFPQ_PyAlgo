@@ -122,26 +122,21 @@ def run_all_pairs_cflr(
             else:
                 grammar = grammar_cfg.to_cnf_template(homka_group_automata)
                 
-            if not explode_indices:
-                mapped_rules: dict[str, set[str]] = {}
-                for str in ["load", "store"]:
-                    mapped_rules[f"{str}_i"] = set([f"{str}_i_{i}" for i in range(graph.block_matrix_space.block_count)])
-                for str in ["load_r", "store_r"]:
-                    mapped_rules[f"{str}_i"] = set([f"{str}_i_{i}" for i in range(graph.block_matrix_space.block_count)])
-                for rsm_state in [7, 8, 9, 10]:
-                    for automata_depth in range(depth + 2):
-                        if homka_group_automata:
-                            mapped_rules[f"S_{rsm_state}_G{automata_depth}_i"] = set(
-                                [f"S_{rsm_state + 4*i}_G{automata_depth}" for i in range(graph.block_matrix_space.block_count)]
+            mapped_rules: dict[str, set[str]] = {}
+            for rsm_state in [7, 8, 9, 10]:
+                for automata_depth in range(depth + 2):
+                    if homka_group_automata:
+                        mapped_rules[f"S_{rsm_state}_G{automata_depth}_i"] = set(
+                            [f"S_{rsm_state + 4*i}_G{automata_depth}" for i in range(graph.block_matrix_space.block_count)]
+                        )
+                    else:
+                        for automata_index in range(context_num**automata_depth):
+                            mapped_rules[f"S_{rsm_state}_({automata_depth}, {automata_index})_i"] = set(
+                                [f"S_{rsm_state + 4*i}_({automata_depth}, {automata_index})" for i in range(graph.block_matrix_space.block_count)]
                             )
-                        else:
-                            for automata_index in range(context_num**automata_depth):
-                                mapped_rules[f"S_{rsm_state}_({automata_depth}, {automata_index})_i"] = set(
-                                    [f"S_{rsm_state + 4*i}_({automata_depth}, {automata_index})" for i in range(graph.block_matrix_space.block_count)]
-                                )
 
-                grammar.group_rules(mapped_rules)
-            print(f"Compressed grammar size: {len(grammar.complex_rules)} (compression ratio: {old_size / len(grammar.complex_rules)})")
+            grammar.group_rules(mapped_rules)
+            print(f"Compressed grammar size: {len(grammar.complex_rules)}/{old_size} (compression ratio: {old_size / len(grammar.complex_rules)})")
             need_save = True
     else:
         grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)

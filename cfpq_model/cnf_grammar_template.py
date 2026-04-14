@@ -83,7 +83,7 @@ class CnfGrammarTemplate:
         TODO: make this more general
         """
         map: dict[str, str] = {old_sym: new_sym for new_sym, old_syms in map.items() for old_sym in old_syms}
-        replaced_symbols: set[str] = {rhs for rhss in map.items() for rhs in rhss}
+        replaced_symbols: set[str] = set(map.keys())
         new_complex_rules: list[tuple[Symbol, Symbol, Symbol]] = []
         visited: set[tuple[str, str, str]] = set()
         print(f"Grouping rules...", end="", flush=True)

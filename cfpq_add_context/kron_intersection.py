@@ -468,7 +468,7 @@ class Automata:
 class PointsToRSM:
     def __init__(self, num_fields: int = 1):
         self.num_fields = int(num_fields)
-        self.labels: list[str] = [
+        self.labels: set[str] = {
             "assign",
             "assign_r",
             "alloc",
@@ -476,10 +476,9 @@ class PointsToRSM:
             "Alias",
             "PointsTo",
             "FlowsTo",
-        ]
+        }
         self.nodes_count: int = 0
-        for i in range(self.num_fields):
-            self.labels.extend([f"load_i_{i}", f"load_r_i_{i}", f"store_i_{i}", f"store_r_i_{i}"])
+        self.labels.update([f"load_i", f"load_r_i", f"store_i", f"store_r_i"])
 
         self.graph: dict[str, list[tuple[int, int]]] = defaultdict(list)
         self._build_graph()
@@ -490,10 +489,16 @@ class PointsToRSM:
         # for PointsTo box:
         # 0 -assign-> 0
         # 0 -alloc--> 1
+        # 0 -load_i-> 7
+        # 7 -Alias-> 8
+        # 8 -store_i-> 0
         #
         #  for FlowsTo box:
         # 2 -alloc_r--> 3
         # 3 -assing_r-> 3
+        # 3 -store_r_i-> 9
+        # 9 -Alias-> 10
+        # 10 -load_r_i-> 3
         #
         # for Alias box:
         # 4 -PointsTo-> 5
@@ -512,17 +517,15 @@ class PointsToRSM:
 
         self.nodes_count = 7
 
-        for i in range(self.num_fields):
+        self.graph[f"load_i"].append((0, self.nodes_count))
+        self.graph["Alias"].append((self.nodes_count, self.nodes_count + 1))
+        self.graph[f"store_i"].append((self.nodes_count + 1, 0))
+        self.nodes_count += 2
 
-            self.graph[f"load_i_{i}"].append((0, self.nodes_count))
-            self.graph["Alias"].append((self.nodes_count, self.nodes_count + 1))
-            self.graph[f"store_i_{i}"].append((self.nodes_count + 1, 0))
-            self.nodes_count += 2
-
-            self.graph[f"store_r_i_{i}"].append((3, self.nodes_count))
-            self.graph["Alias"].append((self.nodes_count, self.nodes_count + 1))
-            self.graph[f"load_r_i_{i}"].append((self.nodes_count + 1, 3))
-            self.nodes_count += 2
+        self.graph[f"store_r_i"].append((3, self.nodes_count))
+        self.graph["Alias"].append((self.nodes_count, self.nodes_count + 1))
+        self.graph[f"load_r_i"].append((self.nodes_count + 1, 3))
+        self.nodes_count += 2
 
     def add_other_labels(self, labels: list[str]):
         for label in labels:
@@ -543,21 +546,13 @@ class PointsToRSM:
         return (0, [1, 3, 6])
 
     def get_PointTo_states(self) -> set[int]:
-        nums = set([0, 1])
-        for i in range(self.num_fields):
-            nums.add(7 + i * 4)
-            nums.add(8 + i * 4)
-        return nums
+        return {0, 1, 7, 8}
 
     def get_FlowsTo_states(self) -> set[int]:
-        nums = set([2, 3])
-        for i in range(self.num_fields):
-            nums.add(9 + i * 4)
-            nums.add(10 + i * 4)
-        return nums
+        return {2, 3, 9, 10}
 
     def get_Alias_states(self) -> set[int]:
-        return set([4, 5, 6])
+        return {4, 5, 6}
 
     def __repr__(self):
         return f"PointsToRSM(num_fields={self.num_fields}, size={self.get_graph_size()})"
@@ -673,12 +668,8 @@ class CFGIntersection:
     def get_rules_count(self) -> int:
         return len(self.binary_rules) + len(self.simple_rules) + len(self.epsilon_rules)
 
-    def _get_sym_from_raw(self, sym: Symbol | _Sym | str) -> _Sym:
-        if isinstance(sym, _Sym):
-            return sym
-
-        if isinstance(sym, str):
-            sym = Symbol(sym)
+    def _get_sym_from_raw(self, label: str) -> _Sym:
+        sym = Symbol(label)
 
         if not sym.label.startswith("S_"):
             return _Sym(0, 0, self.contexts_num, is_term=True, term_label=sym.label)
@@ -687,23 +678,23 @@ class CFGIntersection:
         automata_state = int(sym.label.split("_")[2])
         return _Sym(rsm_state, automata_state, self.contexts_num)
 
-    def add_binary_rule(self, lhs: Symbol | _Sym | str, rhs1: Symbol | _Sym | str, rhs2: Symbol | _Sym | str) -> None:
-        lhs = self._get_sym_from_raw(lhs)
-        rhs1 = self._get_sym_from_raw(rhs1)
-        rhs2 = self._get_sym_from_raw(rhs2)
+    def add_binary_rule(self, lhs_str: str, rhs1_str: str, rhs2_str: str) -> None:
+        lhs = self._get_sym_from_raw(lhs_str)
+        rhs1 = self._get_sym_from_raw(rhs1_str)
+        rhs2 = self._get_sym_from_raw(rhs2_str)
 
         self.binary_rules.append((lhs, rhs1, rhs2))
         self.nonterminals.add(lhs)
 
-    def add_simple_rule(self, lhs: Symbol | _Sym | str, rhs: Symbol | _Sym | str) -> None:
-        lhs = self._get_sym_from_raw(lhs)
-        rhs = self._get_sym_from_raw(rhs)
+    def add_simple_rule(self, lhs_str: str, rhs_str: str) -> None:
+        lhs = self._get_sym_from_raw(lhs_str)
+        rhs = self._get_sym_from_raw(rhs_str)
 
         self.simple_rules.append((lhs, rhs))
         self.nonterminals.add(lhs)
 
-    def add_epsilon_rule(self, lhs: Symbol | _Sym | str) -> None:
-        lhs = self._get_sym_from_raw(lhs)
+    def add_epsilon_rule(self, lhs_str: str) -> None:
+        lhs = self._get_sym_from_raw(lhs_str)
 
         self.epsilon_rules.append(lhs)
         self.nonterminals.add(lhs)
@@ -883,41 +874,22 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
         kron.append(kronecker_bool(rsm_matrices[i], automata_matrices[i]))
         # print_kron_to_dot(kron[i], f"kron_build{i}.dot", automata[0].ncols, graph[0].ncols, label=map[i])
 
-    def automata_state_str(state: int) -> str:
-        return str(state)
-        depth = 0
-        state_copy = state
-        while state_copy >= 0:
-            state_copy -= AUTOMATA_CONTEXT_NUM**depth
-            if state_copy < 0:
-                break
-            depth += 1
-
-        initial_index = state_copy + AUTOMATA_CONTEXT_NUM ** (depth)
-        group_num = initial_index // AUTOMATA_CONTEXT_NUM
-        group_inner_num = initial_index % AUTOMATA_CONTEXT_NUM
-
-        return f"G({int(depth)} {int(group_num) * AUTOMATA_CONTEXT_NUM + int(group_inner_num)})"
-
-    boxPointsTo: Box = Box(label="PointsTo", start_states=[], final_states=[f"S_1_{automata_state_str(0)}", f"S_1_{automata_state_str(automata_n - 1)}"])
-    boxFlowsTo: Box = Box(label="FlowsTo", start_states=[], final_states=[f"S_3_{automata_state_str(0)}", f"S_3_{automata_state_str(automata_n - 1)}"])
-    boxAlias: Box = Box(label="Alias", start_states=[], final_states=[f"S_6_{automata_state_str(0)}", f"S_6_{automata_state_str(automata_n - 1)}"])
+    boxPointsTo: Box = Box(label="PointsTo", start_states=[], final_states=[f"S_1_0", f"S_1_{automata_n - 1}"])
+    boxFlowsTo: Box = Box(label="FlowsTo", start_states=[], final_states=[f"S_3_0", f"S_3_{automata_n - 1}"])
+    boxAlias: Box = Box(label="Alias", start_states=[], final_states=[f"S_6_0", f"S_6_{automata_n - 1}"])
 
     for i in range(automata_n):
-        boxPointsTo.start_states.append(f"S_0_{automata_state_str(i)}")
-        boxFlowsTo.start_states.append(f"S_2_{automata_state_str(i)}")
-        boxAlias.start_states.append(f"S_4_{automata_state_str(i)}")
+        boxPointsTo.start_states.append(f"S_0_{i}")
+        boxFlowsTo.start_states.append(f"S_2_{i}")
+        boxAlias.start_states.append(f"S_4_{i}")
 
     PointsTo_states = rsm.get_PointTo_states()
     FlowsTo_states = rsm.get_FlowsTo_states()
     Alias_states = rsm.get_Alias_states()
     for i, label in enumerate(labels):
-        # print(f"label: {i}/{len(labels)}")
-        print(f"\rGenerating cfg...{i}/{len(labels)}", end="")
-        sys.stdout.flush()
+        print(f"\rGenerating cfg...{i}/{len(labels)}", end="", flush=True)
         edges = kron[i].to_edgelist()
         edgesZipped = list(zip(edges[0], edges[1]))
-        result = ""
 
         for _edg, _ in edgesZipped:
             box: Box
@@ -926,11 +898,11 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
             second_start_state = int(_edg[0] % automata_n)
             second_end_state = int(_edg[1] % automata_n)
 
-            newState0 = f"S_{first_start_state}_{automata_state_str(second_start_state)}"
-            newState1 = f"S_{first_end_state}_{automata_state_str(second_end_state)}"
+            newState0 = f"S_{first_start_state}_{second_start_state}"
+            newState1 = f"S_{first_end_state}_{second_end_state}"
             if label in ["PointsTo", "FlowsTo", "Alias"]:
                 mapp = {"PointsTo": "0", "FlowsTo": "2", "Alias": "4"}
-                newLabel = f"S_{mapp[label]}_{automata_state_str(second_start_state)}"
+                newLabel = f"S_{mapp[label]}_{second_start_state}"
             else:
                 newLabel = label
 
