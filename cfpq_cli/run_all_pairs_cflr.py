@@ -24,7 +24,7 @@ def convert_graph(num_contexts: int, graph_path: str) -> str:
         with open(new_file_name, "w") as new_file:
             for line in file:
                 line = line.strip()
-                if "_r" in line and ("open" in line or "close" in line):
+                if "_r" in line:
                     continue
 
                 splitted = line.split("\t")
@@ -38,12 +38,10 @@ def convert_graph(num_contexts: int, graph_path: str) -> str:
                     label = label.split(" ")
                     if label[0] == "store_i":
                         new_file.write(f"{frm}\t{to}\tstore_i\t{label[1]}\n")
+                        new_file.write(f"{to}\t{frm}\tstore_r_i\t{label[1]}\n")
                     if label[0] == "load_i":
                         new_file.write(f"{frm}\t{to}\tload_i\t{label[1]}\n")
-                    if label[0] == "store_r_i":
-                        new_file.write(f"{frm}\t{to}\tstore_r_i\t{label[1]}\n")
-                    if label[0] == "load_r_i":
-                        new_file.write(f"{frm}\t{to}\tload_r_i\t{label[1]}\n")
+                        new_file.write(f"{to}\t{frm}\tload_r_i\t{label[1]}\n")
                     continue
 
                 if "open" in label:
