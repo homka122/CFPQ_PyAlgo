@@ -127,8 +127,10 @@ class LabelDecomposedGraph:
                 block_count = max(block_count, int(label_indices.max()) + 1)
 
             matrices: Dict[Symbol, Matrix] = {}
+            edgesNum = 0
             for symbol, (edge_sources, edge_destinations, label_indices) in data.items():
                 edge_sources += label_indices * vertex_count
+                edgesNum += len(edge_sources)
 
                 try:
                     matrices[symbol] = Matrix.from_coo(
@@ -144,6 +146,10 @@ class LabelDecomposedGraph:
                         f"This issue is usually caused by using indexes for label without `_i` suffix.\n"
                         f"Consider adding `_i` suffix to label '{symbol.label}'."
                     ) from e
+
+            print("PATH: ", path)
+            print("VERTEX COUNT: ", vertex_count)
+            print("EDGES NUM: ", edgesNum)
 
             return LabelDecomposedGraph(
                 vertex_count=vertex_count,
