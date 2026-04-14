@@ -1,3 +1,5 @@
+from numba import njit, prange
+import numba as nb
 from cfpq_matrix.block.block_matrix_space_impl import BlockMatrixSpaceImpl
 from numpy import block
 from cfpq_model.cnf_grammar_template import Symbol
@@ -8,6 +10,7 @@ from typing import Literal, Callable
 from abc import ABC
 
 import graphblas
+import numpy as np
 from graphblas.core.matrix import Matrix
 from graphblas.core.operator import Monoid, Semiring
 
@@ -74,25 +77,42 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         if self._is_flatted():
             return
 
+        assert isinstance(self.base, BlockMatrix)
+
         input_shape = self._get_inner_shape()
         assert input_shape[0] == self.context_num
         output_shape = (1, input_shape[1] * self.context_num)
 
-        matrices = self.block_space.get_hyper_vector_blocks(self.base.to_unoptimized())
-        new_matrices: list[Matrix] = []
-        for matrix in matrices:
-            (rows, cols, values) = matrix.to_coo()
-            cols = cols % self.n + (cols // self.n * self.context_num * self.n) + (rows // self.n * self.n)
-            rows = rows % self.n
-            new_matrices.append(Matrix.from_coo(rows, cols, values, nrows=output_shape[0] * self.n, ncols=output_shape[1] * self.n))
+        cell_h = self.block_space.cell_shape[0]
+        cell_w = self.block_space.cell_shape[1]
+        new_cell_shape = (output_shape[0] * self.n, output_shape[1] * self.n)
+        is_cell = self.block_space.is_single_cell(self.shape)
 
-        base = MatrixToOptimizedAdapter(self.block_space.stack_into_hyper_column(new_matrices))
-        assert isinstance(self.base, BlockMatrix)
-        new_block_space = BlockMatrixSpaceImpl((output_shape[0] * self.n, output_shape[1] * self.n), self.block_space.block_count)
-        self._base = self.base.optimize_similarly_with_block(
-            base,
-            new_block_space,
+        (rows, cols, values) = self.to_unoptimized().to_coo()
+        if not is_cell:
+            orientation = self.block_space.get_block_matrix_orientation(self.shape)
+            if orientation == BlockMatrixOrientation.HORIZONTAL:
+                rows = rows + (cols // cell_w * cell_h)
+                cols = cols % cell_w
+
+        cols = cols % self.n + (cols // self.n * self.context_num * self.n) + (rows % cell_h // self.n * self.n)
+        rows = rows % self.n + rows // cell_h * self.n
+
+        nrows, ncols = new_cell_shape[0], new_cell_shape[1]
+        if not is_cell:
+            nrows *= self.block_space.block_count
+
+        base = Matrix.from_coo(
+            rows,
+            cols,
+            values,
+            nrows=nrows,
+            ncols=ncols,
         )
+
+        new_block_space = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
+        base = self.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_space)
+        self._base = base
         self.block_space = new_block_space
 
     def _get_hyper_vector_shape(self, matrix: Matrix) -> list[Matrix]:
@@ -102,23 +122,44 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         if not self._is_flatted():
             return
 
+        assert isinstance(self.base, BlockMatrix)
+
         input_shape = self._get_inner_shape()
         assert input_shape[0] == 1
         output_shape = (self.context_num, input_shape[1] // self.context_num)
 
-        matrices = self._get_hyper_vector_shape(self.base.to_unoptimized())
-        new_matrices: list[list[Matrix]] = [[] for _ in range(output_shape[0])]
-        for index in range(len(matrices) // input_shape[1]):
-            for row in range(output_shape[0]):
-                for col in range(output_shape[1]):
-                    new_matrices[row].append(matrices[col * self.context_num + row + (index * input_shape[1])])
-        new_matrix = graphblas.ss.concat(new_matrices)
+        cell_h = self.block_space.cell_shape[0]
+        cell_w = self.block_space.cell_shape[1]
+        new_cell_shape = (output_shape[0] * self.n, output_shape[1] * self.n)
+        is_cell = self.block_space.is_single_cell(self.shape)
 
-        base = MatrixToOptimizedAdapter(new_matrix)
-        assert isinstance(self.base, BlockMatrix)
-        new_block_space = BlockMatrixSpaceImpl((output_shape[0] * self.n, output_shape[1] * self.n), self.block_space.block_count)
-        self._base = self.base.optimize_similarly_with_block(base, new_block_space)
+        (rows, cols, values) = self.to_unoptimized().to_coo()
+        if not is_cell:
+            orientation = self.block_space.get_block_matrix_orientation(self.shape)
+            if orientation == BlockMatrixOrientation.VERTICAL:
+                cols = cols + (rows // cell_h * cell_w)
+                rows = rows % cell_h
+
+        rows = rows + (cols // self.n % self.context_num * self.n)
+        cols = cols % self.n + (cols % (input_shape[1] * self.n) // (self.n * self.context_num) * self.n) + (cols // (input_shape[1] * self.n) * output_shape[1] * self.n)
+
+        nrows, ncols = new_cell_shape[0], new_cell_shape[1]
+        if not is_cell:
+            ncols *= self.block_space.block_count
+
+        base = Matrix.from_coo(
+            rows,
+            cols,
+            values,
+            nrows=nrows,
+            ncols=ncols,
+        )
+
+        new_block_space = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
+        base = self.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_space)
+        self._base = base
         self.block_space = new_block_space
+        return
 
     @staticmethod
     def get_block_diag_matrix(matrix: OptimizedMatrix, graph_size: int) -> OptimizedMatrix:
@@ -141,48 +182,104 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
     def get_hyper_column(matrix: OptimizedMatrix, count: int) -> OptimizedMatrix:
         assert isinstance(matrix, PointsToMatrix)
         assert isinstance(matrix.base, BlockMatrix)
-        matrices = matrix.block_space.get_hyper_vector_blocks(matrix.base.to_unoptimized())
-        new_matrices: list[list[Matrix]] = []
-        for m in matrices:
-            for i in range(count):
-                new_matrices.append([m])
-        # base = matrix.to_unoptimized()
 
-        base_adapter = MatrixToOptimizedAdapter(graphblas.ss.concat(new_matrices))
+        cell_h = matrix.block_space.cell_shape[0]
         new_cell_shape = (matrix.block_space.cell_shape[0] * count, matrix.block_space.cell_shape[1])
-        base = matrix.base.optimize_similarly_with_block(base_adapter, BlockMatrixSpaceImpl(new_cell_shape, matrix.base.block_matrix_space.block_count))
+        is_cell = matrix.block_space.is_single_cell(matrix.shape)
+
+        (rows, cols, values) = matrix.to_unoptimized().to_coo()
+        if not is_cell:
+            orientation = matrix.block_space.get_block_matrix_orientation(matrix.shape)
+            if orientation == BlockMatrixOrientation.VERTICAL:
+                cols = cols + (rows // cell_h * cell_h)
+                rows = rows % cell_h
+
+        all_rows = []
+        for i in range(count):
+            all_rows.append(rows + cell_h * i)
+        cols = [cols] * count
+        values = [values] * count
+
+        nrows, ncols = new_cell_shape[0], new_cell_shape[1]
+        if not is_cell:
+            ncols *= matrix.block_space.block_count
+
+        base = Matrix.from_coo(
+            np.concatenate(all_rows),
+            np.concatenate(cols),
+            np.concatenate(values),
+            nrows=nrows,
+            ncols=ncols,
+        )
+
+        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, matrix.base.block_matrix_space.block_count)
+        base = matrix.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
         return base
 
     @staticmethod
     def get_hyper_row(matrix: OptimizedMatrix, count: int, vertex_count: int, block_count: int) -> OptimizedMatrix:
         assert isinstance(matrix, PointsToMatrix)
         assert isinstance(matrix.base, BlockMatrix)
-        matrices = matrix.block_space.get_hyper_vector_blocks(matrix.base.to_unoptimized())
-        new_matrices: list[list[Matrix]] = [[]]
-        for m in matrices:
-            for i in range(count):
-                new_matrices[0].append(m)
 
-        # base = matrix.to_unoptimized()
-        # matrices = [[base for _ in range(count)]]
-        return BlockMatrixSpaceImpl((vertex_count, vertex_count * count), block_count).automize_block_operations(
-            MatrixToOptimizedAdapter(graphblas.ss.concat(new_matrices))
+        cell_h = matrix.block_space.cell_shape[0]
+        new_cell_shape = (matrix.block_space.cell_shape[0], matrix.block_space.cell_shape[1] * count)
+        is_cell = matrix.block_space.is_single_cell(matrix.shape)
+
+        (rows, cols, values) = matrix.to_unoptimized().to_coo()
+        if not matrix.block_space.is_single_cell(matrix.shape):
+            orientation = matrix.block_space.get_block_matrix_orientation(matrix.shape)
+            if orientation == BlockMatrixOrientation.HORIZONTAL:
+                rows = rows + (cols // cell_h * cell_h)
+                cols = cols % cell_h
+
+        rows = [rows] * count
+        all_cols = []
+        for i in range(count):
+            all_cols.append(cols + cell_h * i)
+        values = [values] * count
+
+        nrows, ncols = new_cell_shape[0], new_cell_shape[1]
+        if not is_cell:
+            nrows *= matrix.block_space.block_count
+
+        base = Matrix.from_coo(
+            np.concatenate(rows),
+            np.concatenate(all_cols),
+            np.concatenate(values),
+            nrows=nrows,
+            ncols=ncols,
         )
+
+        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, matrix.base.block_matrix_space.block_count)
+        base = matrix.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
+        return base
 
     @staticmethod
     def reduce_column(matrix: OptimizedMatrix, op: Monoid, vertex_count: int, block_count: int) -> OptimizedMatrix:
         assert isinstance(matrix, BlockMatrix)
 
-        matrices = matrix.block_matrix_space.get_hyper_vector_blocks(matrix.base.to_unoptimized())
-        new_matrices: list[Matrix] = []
-        for m in matrices:
-            (rows, columns, values) = m.to_coo()
+        cell_h = matrix.block_matrix_space.cell_shape[1]
+        new_cell_shape = (vertex_count, vertex_count)
+        is_cell = matrix.block_matrix_space.is_single_cell(matrix.shape)
 
-            rows = rows % m.shape[1]
-            new_matrices.append(Matrix.from_coo(rows, columns, values, nrows=m.shape[1], ncols=m.shape[1], dup_op=op))
-        base = MatrixToOptimizedAdapter(matrix.block_matrix_space.stack_into_hyper_column(new_matrices))
+        (rows, cols, values) = matrix.to_unoptimized().to_coo()
+        if not is_cell:
+            orientation = matrix.block_matrix_space.get_block_matrix_orientation(matrix.shape)
+            if orientation == BlockMatrixOrientation.VERTICAL:
+                cols = cols + (rows // cell_h * cell_h)
+                rows = rows % cell_h
 
-        return BlockMatrixSpaceImpl((vertex_count, vertex_count), block_count).automize_block_operations(base)
+        rows = rows % vertex_count
+
+        nrows, ncols = new_cell_shape[0], new_cell_shape[1]
+        if not is_cell:
+            nrows *= matrix.block_matrix_space.block_count
+
+        base = Matrix.from_coo((rows), (cols), (values), nrows=nrows, ncols=ncols, dup_op=op)
+
+        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, block_count)
+        base = matrix.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
+        return base
 
     @property
     def base(self) -> OptimizedMatrix:
