@@ -141,7 +141,11 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                 rows = rows % cell_h
 
         rows = rows + (cols // self.n % self.context_num * self.n)
-        cols = cols % self.n + (cols % (input_shape[1] * self.n) // (self.n * self.context_num) * self.n) + (cols // (input_shape[1] * self.n) * output_shape[1] * self.n)
+        cols = (
+            cols % self.n
+            + (cols % (input_shape[1] * self.n) // (self.n * self.context_num) * self.n)
+            + (cols // (input_shape[1] * self.n) * output_shape[1] * self.n)
+        )
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
@@ -258,7 +262,8 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
     def reduce_column(matrix: OptimizedMatrix, op: Monoid, vertex_count: int, block_count: int) -> OptimizedMatrix:
         assert isinstance(matrix, BlockMatrix)
 
-        cell_h = matrix.block_matrix_space.cell_shape[1]
+        cell_h = matrix.block_matrix_space.cell_shape[0]
+        cell_w = matrix.block_matrix_space.cell_shape[1]
         new_cell_shape = (vertex_count, vertex_count)
         is_cell = matrix.block_matrix_space.is_single_cell(matrix.shape)
 
@@ -266,14 +271,14 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         if not is_cell:
             orientation = matrix.block_matrix_space.get_block_matrix_orientation(matrix.shape)
             if orientation == BlockMatrixOrientation.VERTICAL:
-                cols = cols + (rows // cell_h * cell_h)
+                cols = cols + (rows // cell_h * cell_w)
                 rows = rows % cell_h
 
         rows = rows % vertex_count
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
-            nrows *= matrix.block_matrix_space.block_count
+            ncols *= matrix.block_matrix_space.block_count
 
         base = Matrix.from_coo((rows), (cols), (values), nrows=nrows, ncols=ncols, dup_op=op)
 
