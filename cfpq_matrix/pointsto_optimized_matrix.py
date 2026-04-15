@@ -169,7 +169,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
     def get_block_diag_matrix(matrix: OptimizedMatrix, graph_size: int) -> OptimizedMatrix:
         assert isinstance(matrix, PointsToMatrix)
         assert isinstance(matrix.base, BlockMatrix)
-        
+
         cell_h = matrix.block_space.cell_shape[0]
         cell_w = matrix.block_space.cell_shape[1]
         new_cell_shape = (cell_w, cell_w)
@@ -298,6 +298,34 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         base = matrix.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
         return base
 
+    @staticmethod
+    def reduce_row(matrix: OptimizedMatrix, op: Monoid, vertex_count: int, block_count: int) -> OptimizedMatrix:
+        assert isinstance(matrix, BlockMatrix)
+
+        cell_h = matrix.block_matrix_space.cell_shape[0]
+        cell_w = matrix.block_matrix_space.cell_shape[1]
+        new_cell_shape = (vertex_count, vertex_count)
+        is_cell = matrix.block_matrix_space.is_single_cell(matrix.shape)
+
+        (rows, cols, values) = matrix.to_unoptimized().to_coo()
+        if not is_cell:
+            orientation = matrix.block_matrix_space.get_block_matrix_orientation(matrix.shape)
+            if orientation == BlockMatrixOrientation.HORIZONTAL:
+                rows = rows + (cols // cell_w * cell_h)
+                cols = cols % cell_w
+
+        cols = cols % vertex_count
+
+        nrows, ncols = new_cell_shape[0], new_cell_shape[1]
+        if not is_cell:
+            ncols *= matrix.block_matrix_space.block_count
+
+        base = Matrix.from_coo((rows), (cols), (values), nrows=nrows, ncols=ncols, dup_op=op)
+
+        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, block_count)
+        base = matrix.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
+        return base
+
     @property
     def base(self) -> OptimizedMatrix:
         return self._base
@@ -319,22 +347,32 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                 if right_shape[0] == 1 and right_shape[1] == 1:
                     # [(_0, ..., (_nums] x [S] => [(_0, ..., (_nums] x [S, ..., S]^T = [S]
                     if not swap_operands:
-                        column = self.get_hyper_column(other, self.context_num)
-                        assert isinstance(column, BlockMatrix)
-                        base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
-                            self.base.mxm(column, op, swap_operands=swap_operands)
-                        )
+                        if self.nvals > other.nvals * self.context_num:
+                            accum_contexts = self.reduce_row(self.base, op.monoid, self.n, self.block_space.block_count)
+                            assert isinstance(accum_contexts, BlockMatrix)
+                            base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
+                                accum_contexts.mxm(other.base, op, swap_operands=swap_operands)
+                            )
+                        else:
+                            column = self.get_hyper_column(other, self.context_num)
+                            assert isinstance(column, BlockMatrix)
+                            base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
+                                self.base.mxm(column, op, swap_operands=swap_operands)
+                            )
                         return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
-                        # self.block_space.automize_block_operations()
-                        # return BlockMatrix.optimize_similarly_with_block(
-                        # self.base.mxm(column, op, swap_operands=swap_operands), BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count)
-                        # )
                     else:
-                        column = self.get_hyper_column(self, self.context_num)
-                        assert isinstance(column, BlockMatrix)
-                        base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
-                            column.mxm(other.base, op, swap_operands=swap_operands)
-                        )
+                        if self.nvals > other.nvals * self.context_num:
+                            accum_contexts = self.reduce_row(other.base, op.monoid, self.n, self.block_space.block_count)
+                            assert isinstance(accum_contexts, BlockMatrix)
+                            base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
+                                self.base.mxm(accum_contexts.base, op, swap_operands=swap_operands)
+                            )
+                        else:
+                            column = self.get_hyper_column(self, self.context_num)
+                            assert isinstance(column, BlockMatrix)
+                            base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
+                                column.mxm(other.base, op, swap_operands=swap_operands)
+                            )
                         return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
                 else:
                     # [(_0, ..., (_nums] x State [nums x nums^(depth-1)] = State [1 x nums^(depth-1)]
