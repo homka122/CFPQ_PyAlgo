@@ -52,6 +52,9 @@ def convert_graph(num_contexts: int, graph_path: str) -> str:
                     context = int(label.split("_")[1]) % num_contexts
                     new_file.write(f"{frm}\t{to}\t){str(context)}\n")
                     # new_file.write(f"{to}\t{frm}\t({str(context)}\n")
+                elif label in ["alloc", "assign"]:
+                    new_file.write(f"{frm}\t{to}\t{label}\n")
+                    new_file.write(f"{to}\t{frm}\t{label}_r\n")
                 else:
                     new_file.write(f"{frm}\t{to}\t{label}\n")
 
