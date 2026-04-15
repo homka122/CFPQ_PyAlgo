@@ -167,20 +167,32 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
     @staticmethod
     def get_block_diag_matrix(matrix: OptimizedMatrix, graph_size: int) -> OptimizedMatrix:
-        # assert matrix.shape[0] == graph_size
         assert isinstance(matrix, PointsToMatrix)
+        assert isinstance(matrix.base, BlockMatrix)
+        
+        cell_h = matrix.block_space.cell_shape[0]
+        cell_w = matrix.block_space.cell_shape[1]
+        new_cell_shape = (cell_w, cell_w)
+        is_cell = matrix.block_space.is_single_cell(matrix.shape)
 
-        matrices = matrix.block_space.get_hyper_vector_blocks(matrix.base.to_unoptimized())
-        new_cell_shape = (matrices[0].shape[1], matrices[0].shape[1])
-        new_matrices: list[Matrix] = []
-        for m in matrices:
-            (rows, cols, values) = m.to_coo()
-            rows = rows + (cols // graph_size * graph_size)
-            new_matrices.append(Matrix.from_coo(rows, cols, values, nrows=m.shape[1], ncols=m.shape[1]))
-        base = MatrixToOptimizedAdapter(matrix.block_space.stack_into_hyper_column(new_matrices))
-        new_block_space = BlockMatrixSpaceImpl(new_cell_shape, matrix.block_space.block_count)
+        (rows, cols, values) = matrix.to_unoptimized().to_coo()
+        if not is_cell:
+            orientation = matrix.block_space.get_block_matrix_orientation(matrix.shape)
+            if orientation == BlockMatrixOrientation.HORIZONTAL:
+                rows = rows + (cols // cell_w * cell_h)
+                cols = cols % cell_w
 
-        return new_block_space.automize_block_operations(base)
+        rows = rows % cell_h + rows // cell_h * cell_w + cols // cell_w * cell_h
+
+        nrows, ncols = new_cell_shape[0], new_cell_shape[1]
+        if not is_cell:
+            nrows *= matrix.block_space.block_count
+
+        base = Matrix.from_coo((rows), (cols), (values), nrows=nrows, ncols=ncols)
+
+        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, matrix.block_space.block_count)
+        base = matrix.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
+        return base
 
     @staticmethod
     def get_hyper_column(matrix: OptimizedMatrix, count: int) -> OptimizedMatrix:
