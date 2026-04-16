@@ -39,7 +39,7 @@ def intersection_op(x: int, y: int) -> int:
 
 BinaryOp.register_new("intersection_op", intersection_op, lazy=True)
 # I don't need it now, but it slows down the start of the program
-if False:
+if True:
     Monoid.register_new("labels_intersection", binary.intersection_op, identity=SIGMA, lazy=True)
 
 

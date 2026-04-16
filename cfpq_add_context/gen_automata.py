@@ -50,8 +50,8 @@ def generate(number_of_contexts: int, depth: int, is_log=False) -> Matrix:
             #     for edg in ((_from, _to, mk_open_context(_to)), (_to, _from, mk_close_context(_to)))
             # ]
         current_level = next_level
-    log("curr = ", current_level)
-    log("next = ", next_level)
+    # log("curr = ", current_level)
+    # log("next = ", next_level)
     last_on_last_level = current_level[-1]
     final = last_on_last_level + 1
     edges = edges + [(i, i, SIGMA_WITHOUT_CONTEXTS) for i in range(1, final)] + [(i, final, ALL_OPEN_CONTEXTS) for i in current_level] + [(final, final, SIGMA)]

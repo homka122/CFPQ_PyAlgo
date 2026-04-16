@@ -171,9 +171,12 @@ def to_label_decomposed_graph(graph, automata_size, initial_graph_size, is_log=F
 
     return LabelDecomposedGraph(
         vertex_count=vertex_count,
-        block_matrix_space=BlockMatrixSpaceImpl(cell_shape == (vertex_count, vertex_count), block_count=block_count),
+        block_matrix_space=BlockMatrixSpaceImpl(cell_shape=(vertex_count, vertex_count), block_count=block_count),
         dtype=BOOL,
         matrices=matrices,
+        depth=0,
+        group=False,
+        contexts_num=0
     )
 
 
