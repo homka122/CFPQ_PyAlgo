@@ -77,7 +77,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         self,
         new_cell_shape,
         orientation: BlockMatrixOrientation,
-        tranform: Callable[[np.ndarray, np.ndarray, np.ndarray, int, int], tuple[np.ndarray, np.ndarray, np.ndarray]],
+        tranform: Callable[[np.ndarray, np.ndarray, np.ndarray, int, int], tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]],
     ) -> BlockMatrix:
         assert isinstance(self.base, BlockMatrix)
 
@@ -98,17 +98,23 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                     rows = rows % cell_h
 
         if is_cell:
-            rows, cols, values = tranform(rows, cols, values, cell_h, cell_w)
+            rows, cols, values, mask = tranform(rows, cols, values, cell_h, cell_w)
         elif orientation == BlockMatrixOrientation.VERTICAL:
             indecies = rows // cell_h
             rows = rows % cell_h
-            rows, cols, values = tranform(rows, cols, values, cell_h, cell_w)
-            rows = rows + new_cell_shape[0] * indecies
+            rows, cols, values, mask = tranform(rows, cols, values, cell_h, cell_w)
+            if mask is None:
+                rows = rows + new_cell_shape[0] * indecies
+            else:
+                rows = rows + new_cell_shape[0] * indecies[mask]
         elif orientation == BlockMatrixOrientation.HORIZONTAL:
             indecies = cols // cell_w
             cols = cols % cell_w
-            rows, cols, values = tranform(rows, cols, values, cell_h, cell_w)
-            cols = cols + new_cell_shape[1] * indecies
+            rows, cols, values, mask = tranform(rows, cols, values, cell_h, cell_w)
+            if mask is None:
+                cols = cols + new_cell_shape[1] * indecies
+            else:
+                cols = cols + new_cell_shape[1] * indecies[mask]
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
@@ -148,7 +154,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             cols = cols + cols // self.n * cell_h + (rows // self.n * self.n)
             rows = rows % self.n
 
-            return rows, cols, values
+            return rows, cols, values, None
 
         base = self._transform_matrix(new_cell_shape, BlockMatrixOrientation.VERTICAL, transform)
 
@@ -174,7 +180,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             rows = rows + (cols // cell_h * cell_h)
             cols = cols % cell_h
 
-            return rows, cols, values
+            return rows, cols, values, None
 
         base = self._transform_matrix(new_cell_shape, BlockMatrixOrientation.HORIZONTAL, transform)
 
