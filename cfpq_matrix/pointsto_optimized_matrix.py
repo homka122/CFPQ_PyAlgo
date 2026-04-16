@@ -31,6 +31,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         self.n: int = n
         self.context_num: int = context_num
         self.block_space: BlockMatrixSpace = base.block_matrix_space
+        self.reduced: BlockMatrix | None = None
 
     # written by Homka122
     def _is_flatted(self) -> bool:
@@ -347,32 +348,22 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                 if right_shape[0] == 1 and right_shape[1] == 1:
                     # [(_0, ..., (_nums] x [S] => [(_0, ..., (_nums] x [S, ..., S]^T = [S]
                     if not swap_operands:
-                        if self.nvals > other.nvals * self.context_num:
+                        if self.reduced is None:
                             accum_contexts = self.reduce_row(self.base, op.monoid, self.n, self.block_space.block_count)
                             assert isinstance(accum_contexts, BlockMatrix)
-                            base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
-                                accum_contexts.mxm(other.base, op, swap_operands=swap_operands)
-                            )
-                        else:
-                            column = self.get_hyper_column(other, self.context_num)
-                            assert isinstance(column, BlockMatrix)
-                            base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
-                                self.base.mxm(column, op, swap_operands=swap_operands)
-                            )
+                            self.reduced = accum_contexts
+                        base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
+                            self.reduced.mxm(other.base, op, swap_operands=swap_operands)
+                        )
                         return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
                     else:
-                        if self.nvals > other.nvals * self.context_num:
+                        if other.reduced is None:
                             accum_contexts = self.reduce_row(other.base, op.monoid, self.n, self.block_space.block_count)
                             assert isinstance(accum_contexts, BlockMatrix)
-                            base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
-                                self.base.mxm(accum_contexts.base, op, swap_operands=swap_operands)
-                            )
-                        else:
-                            column = self.get_hyper_column(self, self.context_num)
-                            assert isinstance(column, BlockMatrix)
-                            base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
-                                column.mxm(other.base, op, swap_operands=swap_operands)
-                            )
+                            other.reduced = accum_contexts
+                        base = BlockMatrixSpaceImpl((self.n, self.n), self.block_space.block_count).automize_block_operations(
+                            self.base.mxm(other.reduced, op, swap_operands=swap_operands)
+                        )
                         return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
                 else:
                     # [(_0, ..., (_nums] x State [nums x nums^(depth-1)] = State [1 x nums^(depth-1)]
