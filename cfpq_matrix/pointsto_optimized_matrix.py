@@ -73,35 +73,49 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             return 0
             # return int(symbol.split("(")[-1].split(",")[0])
 
-    # make from matrix with size 1 x nums^(depth) matrix with size nums x nums^(depth-1) if depth != 0
-    def _flat_matrix(self) -> None:
-        if self._is_flatted():
-            return
-
+    def _transform_matrix(
+        self,
+        new_cell_shape,
+        orientation: BlockMatrixOrientation,
+        tranform: Callable[[np.ndarray, np.ndarray, np.ndarray, int, int], tuple[np.ndarray, np.ndarray, np.ndarray]],
+    ) -> BlockMatrix:
         assert isinstance(self.base, BlockMatrix)
-
-        input_shape = self._get_inner_shape()
-        assert input_shape[0] == self.context_num
-        output_shape = (1, input_shape[1] * self.context_num)
 
         cell_h = self.block_space.cell_shape[0]
         cell_w = self.block_space.cell_shape[1]
-        new_cell_shape = (output_shape[0] * self.n, output_shape[1] * self.n)
         is_cell = self.block_space.is_single_cell(self.shape)
 
         (rows, cols, values) = self.to_unoptimized().to_coo()
         if not is_cell:
-            orientation = self.block_space.get_block_matrix_orientation(self.shape)
-            if orientation == BlockMatrixOrientation.HORIZONTAL:
-                rows = rows + (cols // cell_w * cell_h)
-                cols = cols % cell_w
+            # rotate vector
+            orientation_cur = self.block_space.get_block_matrix_orientation(self.shape)
+            if orientation_cur != orientation:
+                if orientation == BlockMatrixOrientation.VERTICAL:
+                    rows = rows + (cols // cell_w * cell_h)
+                    cols = cols % cell_w
+                if orientation == BlockMatrixOrientation.HORIZONTAL:
+                    cols = cols + (rows // cell_h * cell_w)
+                    rows = rows % cell_h
 
-        cols = cols % self.n + (cols // self.n * self.context_num * self.n) + (rows % cell_h // self.n * self.n)
-        rows = rows % self.n + rows // cell_h * self.n
+        if is_cell:
+            rows, cols, values = tranform(rows, cols, values, cell_h, cell_w)
+        elif orientation == BlockMatrixOrientation.VERTICAL:
+            indecies = rows // cell_h
+            rows = rows % cell_h
+            rows, cols, values = tranform(rows, cols, values, cell_h, cell_w)
+            rows = rows + new_cell_shape[0] * indecies
+        elif orientation == BlockMatrixOrientation.HORIZONTAL:
+            indecies = cols // cell_w
+            cols = cols % cell_w
+            rows, cols, values = tranform(rows, cols, values, cell_h, cell_w)
+            cols = cols + new_cell_shape[1] * indecies
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
-            nrows *= self.block_space.block_count
+            if orientation == BlockMatrixOrientation.VERTICAL:
+                nrows *= self.block_space.block_count
+            elif orientation == BlockMatrixOrientation.HORIZONTAL:
+                ncols *= self.block_space.block_count
 
         base = Matrix.from_coo(
             rows,
@@ -113,8 +127,33 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
         new_block_space = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
         base = self.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_space)
+        assert(isinstance(base, BlockMatrix))
+
+        return base
+
+    # make from matrix with size 1 x nums^(depth) matrix with size nums x nums^(depth-1) if depth != 0
+    def _flat_matrix(self) -> None:
+        if self._is_flatted():
+            return
+
+        assert isinstance(self.base, BlockMatrix)
+
+        input_shape = self._get_inner_shape()
+        assert input_shape[0] == self.context_num
+        output_shape = (1, input_shape[1] * self.context_num)
+
+        new_cell_shape = (output_shape[0] * self.n, output_shape[1] * self.n)
+
+        def transform(rows, cols, values, cell_h, cell_w):
+            cols = cols + cols // self.n * cell_h + (rows // self.n * self.n)
+            rows = rows % self.n
+            
+            return rows, cols, values
+
+        base= self._transform_matrix(new_cell_shape, BlockMatrixOrientation.VERTICAL, transform)
+
         self._base = base
-        self.block_space = new_block_space
+        self.block_space = base.block_matrix_space
 
     def _flat_matrix_rotate(self) -> OptimizedMatrix:
         assert self._is_flatted()
@@ -487,7 +526,9 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                 diag = other.get_block_diag_matrix(other, self.n)
                 assert isinstance(diag, BlockMatrix)
                 left = self._flat_matrix_rotate()
-                res = PointsToMatrix(left.optimize_similarly(left.mxm(diag, op, swap_operands=swap_operands)), "State", self.n, self.context_num, self.depth)
+                res = PointsToMatrix(
+                    left.optimize_similarly(left.mxm(diag, op, swap_operands=swap_operands)), "State", self.n, self.context_num, self.depth
+                )
                 ress = res._flat_matrix_rotate_reverse()
                 base = self.base.optimize_similarly(ress)
                 return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
