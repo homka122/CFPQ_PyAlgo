@@ -417,8 +417,10 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         assert isinstance(other, PointsToMatrix)
         assert self.type == other.type
 
-        self._flat_matrix()
-        other._flat_matrix()
+        if self._is_flatted():
+            other._flat_matrix()
+        else:
+            other._group_matrix()
 
         self.base.iadd(other.base, op)
 
@@ -426,8 +428,10 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         assert isinstance(other, PointsToMatrix)
         assert self.type == "State" and other.type == "State"
 
-        self._flat_matrix()
-        other._flat_matrix()
+        if self._is_flatted():
+            other._flat_matrix()
+        else:
+            other._group_matrix()
 
         # TODO: it must return MatrixToOptimizedAdapter
         return self.optimize_similarly(self.base.rsub(other.base, op))
