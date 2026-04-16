@@ -506,14 +506,8 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                 base = self.base.optimize_similarly(self.base.mxm(diag, op, swap_operands=swap_operands))
                 return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
             if swap_operands:
-                assert isinstance(other.base, BlockMatrix)
-                assert isinstance(self, PointsToMatrix)
-                diag = other.get_block_diag_matrix(other, self.n)
-                assert isinstance(diag, BlockMatrix)
-                left = self._flat_matrix_rotate()
-                res = PointsToMatrix(left.optimize_similarly(left.mxm(diag, op, swap_operands=swap_operands)), "State", self.n, self.context_num, self.depth)
-                ress = res._flat_matrix_rotate_reverse()
-                base = self.base.optimize_similarly(ress)
+                diag = self.get_block_diag_matrix(self, self.n)
+                base = self.base.optimize_similarly(diag.mxm(other.base, op, swap_operands=swap_operands))
                 return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
 
             return self.base.mxm(other.base, op, swap_operands=swap_operands)
