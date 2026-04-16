@@ -186,6 +186,30 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
         return base
 
+    def _reduce_diag_matrix(self) -> OptimizedMatrix:
+        assert isinstance(self.base, BlockMatrix)
+
+        input_shape = self._get_inner_shape()
+        assert input_shape[0] == input_shape[1]
+
+        output_shape = (1, input_shape[1])
+
+        new_cell_shape = (output_shape[0] * self.n, output_shape[1] * self.n)
+
+        def transform(rows, cols, values, cell_h, cell_w):
+            mask = (rows // self.n) == (cols // self.n)
+            rows = rows[mask]
+            cols = cols[mask]
+            values = values[mask]
+
+            rows = rows % self.n
+
+            return rows, cols, values, mask
+
+        base = self._transform_matrix(new_cell_shape, BlockMatrixOrientation.VERTICAL, transform)
+
+        return base
+
     def _flat_matrix_rotate_reverse(self) -> OptimizedMatrix:
 
         assert isinstance(self.base, BlockMatrix)
@@ -512,8 +536,12 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                 base = self.base.optimize_similarly(self.base.mxm(diag, op, swap_operands=swap_operands))
                 return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
             if swap_operands:
-                diag = self.get_block_diag_matrix(self, self.n)
-                base = self.base.optimize_similarly(diag.mxm(other.base, op, swap_operands=swap_operands))
+                rotated = other._flat_matrix_rotate()
+                new_block_space = BlockMatrixSpaceImpl((self.block_space.cell_shape[1], self.block_space.cell_shape[1]), self.block_space.block_count)
+                base = new_block_space.automize_block_operations(self.base.mxm(rotated, op, swap_operands=swap_operands))
+                base = PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
+                assert isinstance(base, PointsToMatrix)
+                base = base._reduce_diag_matrix()
                 return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
 
             return self.base.mxm(other.base, op, swap_operands=swap_operands)
