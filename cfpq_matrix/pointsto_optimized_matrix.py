@@ -116,6 +116,85 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         self._base = base
         self.block_space = new_block_space
 
+    def _flat_matrix_rotate(self) -> OptimizedMatrix:
+        assert self._is_flatted()
+
+        assert isinstance(self.base, BlockMatrix)
+
+        input_shape = self._get_inner_shape()
+        assert input_shape[0] == 1
+        output_shape = (1, input_shape[1] * self.context_num)
+
+        cell_h = self.block_space.cell_shape[0]
+        cell_w = self.block_space.cell_shape[1]
+        new_cell_shape = (cell_w, cell_h)
+        is_cell = self.block_space.is_single_cell(self.shape)
+
+        (rows, cols, values) = self.to_unoptimized().to_coo()
+        if not is_cell:
+            orientation = self.block_space.get_block_matrix_orientation(self.shape)
+            if orientation == BlockMatrixOrientation.VERTICAL:
+                cols = cols + (rows // cell_h * cell_w)
+                rows = rows % cell_h
+
+        rows = rows % self.n + (cols % cell_w // cell_h * cell_h)
+        cols = cols % cell_h + (cols // cell_w * cell_h)
+
+        nrows, ncols = new_cell_shape[0], new_cell_shape[1]
+        if not is_cell:
+            ncols *= self.block_space.block_count
+
+        base = Matrix.from_coo(
+            rows,
+            cols,
+            values,
+            nrows=nrows,
+            ncols=ncols,
+        )
+
+        new_block_space = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
+        base = self.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_space)
+        return base
+
+    def _flat_matrix_rotate_reverse(self) -> OptimizedMatrix:
+
+        assert isinstance(self.base, BlockMatrix)
+
+        input_shape = self._get_inner_shape()
+        # assert input_shape[0] == 1
+        output_shape = (1, input_shape[1] * self.context_num)
+
+        cell_h = self.block_space.cell_shape[0]
+        cell_w = self.block_space.cell_shape[1]
+        new_cell_shape = (cell_w, cell_h)
+        is_cell = self.block_space.is_single_cell(self.shape)
+
+        (rows, cols, values) = self.to_unoptimized().to_coo()
+        if not is_cell:
+            orientation = self.block_space.get_block_matrix_orientation(self.shape)
+            if orientation == BlockMatrixOrientation.VERTICAL:
+                cols = cols + (rows // cell_h * cell_w)
+                rows = rows % cell_h
+
+        cols = cols % cell_w + (cols // cell_w * cell_w) + (rows // cell_w * cell_h)
+        rows = rows % cell_w
+
+        nrows, ncols = new_cell_shape[0], new_cell_shape[1]
+        if not is_cell:
+            ncols *= self.block_space.block_count
+
+        base = Matrix.from_coo(
+            rows,
+            cols,
+            values,
+            nrows=nrows,
+            ncols=ncols,
+        )
+
+        new_block_space = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
+        base = self.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_space)
+        return base
+
     def _get_hyper_vector_shape(self, matrix: Matrix) -> list[Matrix]:
         return [cell for row in matrix.ss.split((self.n, self.n)) for cell in row]
 
@@ -404,9 +483,13 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                 return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
             if swap_operands:
                 assert isinstance(other.base, BlockMatrix)
-                diag = self.get_block_diag_matrix(self, self.n)
+                assert isinstance(self, PointsToMatrix)
+                diag = other.get_block_diag_matrix(other, self.n)
                 assert isinstance(diag, BlockMatrix)
-                base = self.base.optimize_similarly(diag.mxm(other.base, op, swap_operands=swap_operands))
+                left = self._flat_matrix_rotate()
+                res = PointsToMatrix(left.optimize_similarly(left.mxm(diag, op, swap_operands=swap_operands)), "State", self.n, self.context_num, self.depth)
+                ress = res._flat_matrix_rotate_reverse()
+                base = self.base.optimize_similarly(ress)
                 return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
 
             return self.base.mxm(other.base, op, swap_operands=swap_operands)
