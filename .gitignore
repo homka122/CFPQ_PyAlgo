@@ -155,6 +155,8 @@ cython_debug/
 
 # temp workspace ignore
 .vscode
+.zed
+scripts
 gpngs
 grammars
 graphs
