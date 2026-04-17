@@ -558,6 +558,49 @@ class PointsToRSM:
         return f"PointsToRSM(num_fields={self.num_fields}, size={self.get_graph_size()})"
 
 
+class JustFieldsRSM:
+    def __init__(self, num_fields: int = 1):
+        self.num_fields = int(num_fields)
+        self.labels: set[str] = {
+            "S",
+        }
+        self.nodes_count: int = 0
+        self.labels.update([f"load_i", f"store_i"])
+
+        self.graph: dict[str, list[tuple[int, int]]] = defaultdict(list)
+        self._build_graph()
+
+    def _build_graph(self):
+        # 0 -store_i-> 1 -S-> 2 -load_i-> 3 -S-> 4
+        self.graph["load_i"].append((0, 1))
+        self.graph["S"].append((1, 2))
+        self.graph["store_i"].append((2, 3))
+        self.graph["S"].append((3, 4))
+
+        self.nodes_count = 5
+
+    def add_other_labels(self, labels: list[str]):
+        for label in labels:
+            for num in range(0, self.nodes_count):
+                self.graph[label].append((num, num))
+
+    def get_unique_labels(self) -> list[str]:
+        return list(self.labels)
+
+    def get_graph(self) -> dict[str, list[tuple[int, int]]]:
+        return {k: list(v) for k, v in self.graph.items()}
+
+    def get_graph_size(self) -> int:
+        return self.nodes_count
+
+    def get_start_final_state(self) -> tuple[int, list[int]]:
+        size = self.get_graph_size()
+        return (0, [0, 4])
+
+    def __repr__(self):
+        return f"JustFieldsRSM(num_fields={self.num_fields}, size={self.get_graph_size()})"
+
+
 class Box:
     def __init__(
         self,
@@ -933,6 +976,120 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
     cfg = CFGIntersection(_Sym(0, 0, AUTOMATA_CONTEXT_NUM), AUTOMATA_CONTEXT_NUM)
     rules = boxPointsTo.get_complex_rules() + boxFlowsTo.get_complex_rules() + boxAlias.get_complex_rules()
     final_state = boxPointsTo.final_states + boxFlowsTo.final_states + boxAlias.final_states
+    for rule in rules:
+        cfg.add_binary_rule(rule[0], rule[1], rule[2])
+    for state in final_state:
+        cfg.add_epsilon_rule(state)
+
+    file.close()
+    box_file.close()
+
+    return cfg
+
+
+def generate_justfields_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM, write: bool = False) -> CFGIntersection:
+    print("Generating cfg...", end="")
+    automata = Automata()
+    rsm = JustFieldsRSM(RSM_FIELDS_NUM)
+
+    automata.from_gsvgit_automata(generate(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH))
+
+    rsm.add_other_labels(automata.get_unique_labels())
+    automata.add_other_labels(rsm.get_unique_labels())
+
+    automata_graph = automata.get_graph()
+    automata_start, automata_finals = automata.get_start_final_state()
+    automata_n = automata.get_graph_size()
+
+    rsm_graph = rsm.get_graph()
+    rsm_start, rsm_finals = rsm.get_start_final_state()
+    rsm_n = rsm.get_graph_size()
+
+    automata_matrices = []
+    rsm_matrices = []
+
+    labels = automata.get_unique_labels() + rsm.get_unique_labels()
+
+    for label in labels:
+        automata_matrices.append(Matrix.from_edgelist(automata_graph[label], dtype=BOOL, nrows=automata_n, ncols=automata_n, name=f"automata_{label}"))
+        rsm_matrices.append(Matrix.from_edgelist(rsm_graph[label], dtype=BOOL, nrows=rsm_n, ncols=rsm_n, name=f"rsm_{label}"))
+
+    box_file = open(f"graphs/boxes_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.dot", "w")
+    file = open(f"graphs/graph_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.dot", "w")
+    cfg_file = open(f"grammars/grammar_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.cnf", mode="w")
+
+    def w(text):
+        if not write:
+            return
+        print(text, file=file)
+
+    def w_cfg(text):
+        if not write:
+            return
+        print(text, file=cfg_file)
+
+    def w_box(text):
+        if not write:
+            return
+        print(text, file=box_file)
+
+    if write:
+        w("digraph g {")
+        w(dot_rsm(rsm_matrices, labels, rsm_start, rsm_finals, "_r", name=f"RSM (Num of fields: {RSM_FIELDS_NUM})"))
+        w(
+            dot_finite_state_machine(
+                automata_matrices,
+                labels,
+                automata_start,
+                automata_finals,
+                "_g",
+                name=f"FSM (Num of contexts: {AUTOMATA_CONTEXT_NUM}, depth: {AUTOMATA_DEPTH})",
+            )
+        )
+
+    kron: list[Matrix] = []
+    for i in range(0, len(labels)):
+        kron.append(kronecker_bool(rsm_matrices[i], automata_matrices[i]))
+        # print_kron_to_dot(kron[i], f"kron_build{i}.dot", automata[0].ncols, graph[0].ncols, label=map[i])
+
+    boxS: Box = Box(label="S", start_states=[], final_states=[f"S_0_0", f"S_0_{automata_n - 1}", f"S_4_0", f"S_4_{automata_n - 1}"])
+
+    for i in range(automata_n):
+        boxS.start_states.append(f"S_0_{i}")
+
+    for i, label in enumerate(labels):
+        print(f"\rGenerating cfg...{i}/{len(labels)}", end="", flush=True)
+        edges = kron[i].to_edgelist()
+        edgesZipped = list(zip(edges[0], edges[1]))
+
+        for _edg, _ in edgesZipped:
+            box: Box
+            first_start_state = int(_edg[0] // automata_n)
+            first_end_state = int(_edg[1] // automata_n)
+            second_start_state = int(_edg[0] % automata_n)
+            second_end_state = int(_edg[1] % automata_n)
+
+            newState0 = f"S_{first_start_state}_{second_start_state}"
+            newState1 = f"S_{first_end_state}_{second_end_state}"
+            if label == "S":
+                newLabel = f"S_0_{second_start_state}"
+            else:
+                newLabel = label
+
+            boxS.states.add(newState0)
+            boxS.states.add(newState1)
+            boxS.edges.append((newState0, newLabel, newState1))
+    print("\rGenerating cfg...Done!            ")
+    sys.stdout.flush()
+
+    if write:
+        w_box("digraph g {")
+        w_box(boxS.to_dot_cluster())
+        w_box("}")
+
+    cfg = CFGIntersection(_Sym(0, 0, AUTOMATA_CONTEXT_NUM), AUTOMATA_CONTEXT_NUM)
+    rules = boxS.get_complex_rules()
+    final_state = boxS.final_states
     for rule in rules:
         cfg.add_binary_rule(rule[0], rule[1], rule[2])
     for state in final_state:

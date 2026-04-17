@@ -1,3 +1,4 @@
+import re
 import argparse
 import os
 import sys
@@ -13,7 +14,7 @@ from cfpq_model.cnf_grammar_template import CnfGrammarTemplate
 from cfpq_model.label_decomposed_graph import LabelDecomposedGraph
 from cfpq_add_context.add_contexts import add_context, normalize
 from cfpq_add_context.utils import verify
-from cfpq_add_context.kron_intersection import generate_intersection_cfg
+from cfpq_add_context.kron_intersection import generate_intersection_cfg, generate_justfields_cfg
 
 import graphblas
 
@@ -64,6 +65,50 @@ def convert_graph(num_contexts: int, graph_path: str) -> str:
 
     return new_file_name
 
+
+def convert_taint_graph(num_contexts: int, graph_path: str) -> str:
+    with open(graph_path, "r") as file:
+        new_file_name = f"/tmp/taint_{os.path.basename(graph_path).split('.')[0]}_new_indexed_{num_contexts}.g"
+        pattern = re.compile(r'(\d+)->(\d+)\[label="([^"]+)"\]')
+
+        max_context = 0
+        max_field = 0
+        with open(new_file_name, "w") as new_file:
+            for line in file:
+                line = line.strip()
+
+                m = pattern.search(line)
+                if not m:
+                    continue
+
+                frm = int(m.group(1))
+                to = int(m.group(2))
+                label = m.group(3)
+
+                bracket, num = label.split("--")
+                num = int(num)
+                num = num % num_contexts
+
+                if bracket == "op":
+                    new_file.write(f"{frm}\t{to}\tload_{str(num)}\n")
+                    max_field = max(max_field, num)
+                elif bracket == "cp":
+                    new_file.write(f"{frm}\t{to}\tstore_{str(num)}\n")
+                    max_field = max(max_field, num)
+                elif bracket == "ob":
+                    new_file.write(f"{frm}\t{to}\t({str(num)}\n")
+                    max_context = max(max_context, num)
+                elif bracket == "cb":
+                    new_file.write(f"{frm}\t{to}\t){str(num)}\n")
+                    max_context = max(max_context, num)
+                else:
+                    print("Error ", line)
+
+    print(f"max context: {max_context}, max field: {max_field}")
+
+    return new_file_name
+
+
 def run_all_pairs_cflr(
     algo_name: str,
     graph_path: str,
@@ -101,8 +146,11 @@ def run_all_pairs_cflr(
     if add_contexts:
         graph, initial_graph_nvertices = add_context(graph_path, max_num_of_contexts, depth)
     else:
-        if homka_generate_grammar and "explicit" in graph_path:
-            graph_path = convert_graph(context_num, graph_path)
+        if homka_generate_grammar:
+            if "explicit" in graph_path:
+                graph_path = convert_graph(context_num, graph_path)
+            if "taint" in graph_path:
+                graph_path = convert_taint_graph(context_num, graph_path)
         else:
             graph_path = graph_path
         graph = LabelDecomposedGraph.read_from_pocr_graph_file(graph_path, context_num, depth, homka_group_automata)
@@ -113,12 +161,14 @@ def run_all_pairs_cflr(
     if homka_generate_grammar is not None:
         num_fields = graph.block_matrix_space.block_count
         grammar_path = f"grammars/grammar_{depth}_{context_num}_{num_fields}_{'grouped' if homka_group_automata else 'ungrouped'}_{'exploded' if explode_indices else 'unexploded'}"
+        if "taint" in graph_path:
+            grammar_path += "_taint"
         # if exists file
         if os.path.exists(grammar_path):
             grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
             print(f"Original grammar size: {len(grammar.complex_rules)}", flush=True)
         else:
-            grammar_cfg = generate_intersection_cfg(context_num, depth, num_fields)
+            grammar_cfg = generate_justfields_cfg(context_num, depth, num_fields, False)
             old_size = len(grammar_cfg.binary_rules)
             if homka_group_automata:
                 grammar_cfg.group_by_automata_column()
@@ -126,19 +176,32 @@ def run_all_pairs_cflr(
                 grammar.group_rules({"(i": set([f"({i}" for i in range(graph.contexts_num)]), ")i": set([f"){i}" for i in range(graph.contexts_num)])})
             else:
                 grammar = grammar_cfg.to_cnf_template(homka_group_automata)
-                
+
             mapped_rules: dict[str, set[str]] = {}
-            for rsm_state in [7, 8, 9, 10]:
-                for automata_depth in range(depth + 2):
-                    if homka_group_automata:
-                        mapped_rules[f"S_{rsm_state}_G{automata_depth}_i"] = set(
-                            [f"S_{rsm_state + 4*i}_G{automata_depth}" for i in range(graph.block_matrix_space.block_count)]
-                        )
-                    else:
-                        for automata_index in range(context_num**automata_depth):
-                            mapped_rules[f"S_{rsm_state}_({automata_depth}, {automata_index})_i"] = set(
-                                [f"S_{rsm_state + 4*i}_({automata_depth}, {automata_index})" for i in range(graph.block_matrix_space.block_count)]
+            if "explicit" in graph_path:
+                for rsm_state in [7, 8, 9, 10]:
+                    for automata_depth in range(depth + 2):
+                        if homka_group_automata:
+                            mapped_rules[f"S_{rsm_state}_G{automata_depth}_i"] = set(
+                                [f"S_{rsm_state + 4*i}_G{automata_depth}" for i in range(graph.block_matrix_space.block_count)]
                             )
+                        else:
+                            for automata_index in range(context_num**automata_depth):
+                                mapped_rules[f"S_{rsm_state}_({automata_depth}, {automata_index})_i"] = set(
+                                    [f"S_{rsm_state + 4*i}_({automata_depth}, {automata_index})" for i in range(graph.block_matrix_space.block_count)]
+                                )
+            elif "taint" in graph_path:
+                for rsm_state in [1, 2, 3]:
+                    for automata_depth in range(depth + 2):
+                        if homka_group_automata:
+                            mapped_rules[f"S_{rsm_state}_G{automata_depth}_i"] = set(
+                                [f"S_{rsm_state + 4*i}_G{automata_depth}" for i in range(graph.block_matrix_space.block_count)]
+                            )
+                        else:
+                            for automata_index in range(context_num**automata_depth):
+                                mapped_rules[f"S_{rsm_state}_({automata_depth}, {automata_index})_i"] = set(
+                                    [f"S_{rsm_state + 4*i}_({automata_depth}, {automata_index})" for i in range(graph.block_matrix_space.block_count)]
+                                )
 
             grammar.group_rules(mapped_rules)
             print(f"Compressed grammar size: {len(grammar.complex_rules)}/{old_size} (compression ratio: {old_size / len(grammar.complex_rules)})")
