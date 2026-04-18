@@ -364,8 +364,12 @@ class OptimizedLabelDecomposedGraph:
                     accum.iadd_by_symbol(lhs, mxm, op.monoid)
                     # print(accum.nvals)
                     continue
-                left = self.matrices[leftrhs]
-                right = other.matrices[rightrhs]
+                if not swap_operands:
+                    left = self.matrices[leftrhs]
+                    right = other.matrices[rightrhs]
+                else:
+                    left = other.matrices[leftrhs]
+                    right = self.matrices[rightrhs]
 
                 mxm = self.matrices[rhs1].mxm(
                     other.matrices[rhs2],
