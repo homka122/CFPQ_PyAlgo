@@ -344,7 +344,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                 rows = rows + (cols // cell_w * cell_h)
                 cols = cols % cell_w
 
-        rows = rows % cell_h + rows // cell_h * cell_w + cols // cell_w * cell_h
+        rows = rows % cell_h + rows // cell_h * cell_w + cols // cell_h * cell_h
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
