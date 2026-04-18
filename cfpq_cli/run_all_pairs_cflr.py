@@ -66,7 +66,7 @@ def convert_graph(num_contexts: int, graph_path: str) -> str:
     return new_file_name
 
 
-def convert_taint_graph(num_contexts: int, graph_path: str) -> str:
+def convert_taint_graph(num_contexts: int, graph_path: str) -> tuple[str, int]:
     with open(graph_path, "r") as file:
         new_file_name = f"/tmp/taint_{os.path.basename(graph_path).split('.')[0]}_new_indexed_{num_contexts}.g"
         pattern = re.compile(r'(\d+)->(\d+)\[label="([^"]+)"\]')
@@ -87,26 +87,25 @@ def convert_taint_graph(num_contexts: int, graph_path: str) -> str:
 
                 bracket, num = label.split("--")
                 num = int(num)
-                num = num % num_contexts
 
                 if bracket == "op":
-                    new_file.write(f"{frm}\t{to}\tload_{str(num)}\n")
                     max_field = max(max_field, num)
+                    new_file.write(f"{frm}\t{to}\tload_i\t{str(num)}\n")
                 elif bracket == "cp":
-                    new_file.write(f"{frm}\t{to}\tstore_{str(num)}\n")
                     max_field = max(max_field, num)
+                    new_file.write(f"{frm}\t{to}\tstore_i\t{str(num)}\n")
                 elif bracket == "ob":
+                    max_context = max(max_context, num)
                     new_file.write(f"{frm}\t{to}\t({str(num)}\n")
-                    max_context = max(max_context, num)
                 elif bracket == "cb":
-                    new_file.write(f"{frm}\t{to}\t){str(num)}\n")
                     max_context = max(max_context, num)
+                    new_file.write(f"{frm}\t{to}\t){str(num)}\n")
                 else:
                     print("Error ", line)
 
     print(f"max context: {max_context}, max field: {max_field}")
 
-    return new_file_name
+    return new_file_name, max_context
 
 
 def run_all_pairs_cflr(
@@ -150,7 +149,8 @@ def run_all_pairs_cflr(
             if "explicit" in graph_path:
                 graph_path = convert_graph(context_num, graph_path)
             if "taint" in graph_path:
-                graph_path = convert_taint_graph(context_num, graph_path)
+                graph_path, max_context_num = convert_taint_graph(context_num, graph_path)
+                context_num = max_context_num + 1
         else:
             graph_path = graph_path
         graph = LabelDecomposedGraph.read_from_pocr_graph_file(graph_path, context_num, depth, homka_group_automata)
@@ -163,12 +163,17 @@ def run_all_pairs_cflr(
         grammar_path = f"grammars/grammar_{depth}_{context_num}_{num_fields}_{'grouped' if homka_group_automata else 'ungrouped'}_{'exploded' if explode_indices else 'unexploded'}"
         if "taint" in graph_path:
             grammar_path += "_taint"
+        if "java" in graph_path:
+            grammar_path += "_java"
         # if exists file
         if os.path.exists(grammar_path):
             grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
             print(f"Original grammar size: {len(grammar.complex_rules)}", flush=True)
         else:
-            grammar_cfg = generate_justfields_cfg(context_num, depth, num_fields, False)
+            if "taint" in graph_path:
+                grammar_cfg = generate_justfields_cfg(context_num, depth, num_fields, True)
+            else:
+                grammar_cfg = generate_intersection_cfg(context_num, depth, num_fields, False)
             old_size = len(grammar_cfg.binary_rules)
             if homka_group_automata:
                 grammar_cfg.group_by_automata_column()
@@ -178,7 +183,7 @@ def run_all_pairs_cflr(
                 grammar = grammar_cfg.to_cnf_template(homka_group_automata)
 
             mapped_rules: dict[str, set[str]] = {}
-            if "explicit" in graph_path:
+            if "explicit" and "java" in graph_path:
                 for rsm_state in [7, 8, 9, 10]:
                     for automata_depth in range(depth + 2):
                         if homka_group_automata:
@@ -225,7 +230,11 @@ def run_all_pairs_cflr(
             finish = time()
             # print("result: ", res)
             print(f"AnalysisTime\t{finish - start}")
-            print(f"#SEdges\t{res.nvals}")
+            if "taint" in graph_path:
+                print(f"#SEdges\t{res.nvals - graph.vertex_count}")
+                # print(res)
+            else:
+                print(f"#SEdges\t{res.nvals}")
             if out_path is not None:
                 out_dir = os.path.dirname(out_path)
                 if out_dir != "" and not os.path.exists(out_dir):
