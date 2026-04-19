@@ -1014,7 +1014,7 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
         # w_cfg(boxAlias.to_cfg_str())
         # w_cfg("\nCount:\nPointsTo_0")
 
-    cfg = CFGIntersection(_Sym(0, 0, AUTOMATA_CONTEXT_NUM), AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, True)
+    cfg = CFGIntersection(_Sym(0, 0, AUTOMATA_CONTEXT_NUM), AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, group)
     rules = boxPointsTo.get_complex_rules() + boxFlowsTo.get_complex_rules() + boxAlias.get_complex_rules()
     final_state = boxPointsTo.final_states + boxFlowsTo.final_states + boxAlias.final_states
     for rule in rules:
