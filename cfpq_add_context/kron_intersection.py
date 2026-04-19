@@ -368,9 +368,13 @@ class Automata:
         self.other_labels: list[str] = []
         self.open_context_nums: set[int] = set()
         self.closed_context_nums: set[int] = set()
+        self.grouped = False
 
     def get_unique_labels(self) -> list[str]:
-        return list(["(" + str(num) for num in self.open_context_nums]) + list(")" + str(num) for num in self.closed_context_nums)
+        if self.grouped:
+            return ["(i", ")i"]
+        else:
+            return list(["(" + str(num) for num in self.open_context_nums]) + list(")" + str(num) for num in self.closed_context_nums)
 
     def get_graph_size(self) -> int:
         max_node = -1
@@ -395,9 +399,15 @@ class Automata:
     def get_graph(self) -> dict[str, list[tuple[int, int]]]:
         graph: dict[str, list[tuple[int, int]]] = defaultdict(list)
         for frm, num, to in self.open_context:
-            graph["(" + str(num)].append((frm, to))
+            if self.grouped:
+                graph["(i"].append((frm, to))
+            else:
+                graph["(" + str(num)].append((frm, to))
         for frm, num, to in self.closed_context:
-            graph[")" + str(num)].append((frm, to))
+            if self.grouped:
+                graph[")i"].append((frm, to))
+            else:
+                graph[")" + str(num)].append((frm, to))
         for frm, to in self.sigma:
             for label in self.other_labels:
                 graph[label].append((frm, to))
@@ -425,6 +435,22 @@ class Automata:
 
     def add_sigma(self, frm: int, to: int):
         self.sigma.append((int(frm), int(to)))
+
+    def generate_grouped(self, depth: int):
+        self.grouped = True
+
+        for i in range(0, depth + 1):
+            self.add_open(i, 0, i + 1)
+
+        for i in range(1, depth + 1):
+            self.add_closed(i, 0, i - 1)
+
+        self.add_closed(0, 0, 0)
+        self.add_open(depth + 1, 0, depth + 1)
+        self.add_closed(depth + 1, 0, depth + 1)
+
+        for i in range(0, depth + 2):
+            self.add_sigma(i, i)
 
     def from_gsvgit_automata(self, gsvgit_automata: Matrix):
         graph_generated = gsvgit_automata
@@ -661,18 +687,25 @@ class Box:
 
 
 class _Sym:
-    def __init__(self, rsm_state: int, automata_state: int, contexts_num: int, is_term: bool = False, term_label: str = ""):
+    def __init__(self, rsm_state: int, automata_state: int, contexts_num: int, is_term: bool = False, term_label: str = "", depth: int | None = None):
         self.rsm_state = rsm_state
         self.automata_state = automata_state
         self.contexts_num = contexts_num
         self.is_term = is_term
         self.term_label = term_label
-        self.depth, self.index = self._automata_state_info(automata_state)
+        self.is_grouped = False
+        if depth is None:
+            self.depth, self.index = self._automata_state_info(automata_state)
+        else:
+            self.depth = depth
+            self.is_grouped = True
 
     # get depth and index of automata state
     def _automata_state_info(self, automata_state: int) -> tuple[int, int]:
         if self.is_term:
             return (0, 0)
+        if self.is_grouped:
+            return (self.depth, self.automata_state)
         depth = 0
         state_copy = automata_state
         while state_copy >= 0:
@@ -700,13 +733,15 @@ class _Sym:
 
 
 class CFGIntersection:
-    def __init__(self, start: _Sym, contexts_num: int):
+    def __init__(self, start: _Sym, contexts_num: int, depth: int, grouped: bool = False):
         self.start: _Sym = start
         self.binary_rules: list[tuple[_Sym, _Sym, _Sym]] = []
         self.simple_rules: list[tuple[_Sym, _Sym]] = []
         self.epsilon_rules: list[_Sym] = []
         self.nonterminals: set[_Sym] = {start}
         self.contexts_num = contexts_num
+        self.depth = depth
+        self.grouped = grouped
 
     def get_rules_count(self) -> int:
         return len(self.binary_rules) + len(self.simple_rules) + len(self.epsilon_rules)
@@ -719,7 +754,10 @@ class CFGIntersection:
 
         rsm_state = int(sym.label.split("_")[1])
         automata_state = int(sym.label.split("_")[2])
-        return _Sym(rsm_state, automata_state, self.contexts_num)
+        if self.grouped:
+            return _Sym(rsm_state, 0, self.contexts_num, depth=automata_state)
+        else:
+            return _Sym(rsm_state, automata_state, self.contexts_num)
 
     def add_binary_rule(self, lhs_str: str, rhs1_str: str, rhs2_str: str) -> None:
         lhs = self._get_sym_from_raw(lhs_str)
@@ -763,6 +801,28 @@ class CFGIntersection:
                     continue
                 triples.add(s)
                 new_binary_rules.append((lhs, rhs1, rhs2))
+        self.binary_rules = new_binary_rules
+
+    def ungroup_by_automata_column(self) -> None:
+        def get_context_num(sym: _Sym) -> int:
+            if sym.is_term:
+                return 1
+            else:
+                return self.contexts_num ** (sym.depth % (self.depth + 1))
+
+        new_binary_rules: list[tuple[_Sym, _Sym, _Sym]] = []
+        for lhs, rhs1, rhs2 in self.binary_rules:
+            for lhs_context in range(get_context_num(lhs)):
+                for rhs1_context in range(get_context_num(rhs1)):
+                    for rhs2_context in range(get_context_num(rhs2)):
+                        new_binary_rules.append(
+                            (
+                                _Sym(lhs.rsm_state, lhs_context, self.contexts_num, lhs.is_term, lhs.term_label, lhs.depth),
+                                _Sym(rhs1.rsm_state, rhs1_context, self.contexts_num, rhs1.is_term, rhs1.term_label, rhs1.depth),
+                                _Sym(rhs2.rsm_state, rhs2_context, self.contexts_num, rhs2.is_term, rhs2.term_label, rhs2.depth),
+                            )
+                        )
+                        
         self.binary_rules = new_binary_rules
 
     def iter_rules(self) -> Iterable[tuple[_Sym, _Sym | None, _Sym | None]]:
@@ -857,7 +917,8 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
     automata = Automata()
     rsm = PointsToRSM(RSM_FIELDS_NUM)
 
-    automata.from_gsvgit_automata(generate(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH))
+    # automata.from_gsvgit_automata(generate(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH))
+    automata.generate_grouped(AUTOMATA_DEPTH)
 
     rsm.add_other_labels(automata.get_unique_labels())
     automata.add_other_labels(rsm.get_unique_labels())
@@ -973,7 +1034,7 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
         # w_cfg(boxAlias.to_cfg_str())
         # w_cfg("\nCount:\nPointsTo_0")
 
-    cfg = CFGIntersection(_Sym(0, 0, AUTOMATA_CONTEXT_NUM), AUTOMATA_CONTEXT_NUM)
+    cfg = CFGIntersection(_Sym(0, 0, AUTOMATA_CONTEXT_NUM), AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, True)
     rules = boxPointsTo.get_complex_rules() + boxFlowsTo.get_complex_rules() + boxAlias.get_complex_rules()
     final_state = boxPointsTo.final_states + boxFlowsTo.final_states + boxAlias.final_states
     for rule in rules:
@@ -1087,7 +1148,7 @@ def generate_justfields_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM
         w_box(boxS.to_dot_cluster())
         w_box("}")
 
-    cfg = CFGIntersection(_Sym(0, 0, AUTOMATA_CONTEXT_NUM), AUTOMATA_CONTEXT_NUM)
+    cfg = CFGIntersection(_Sym(0, 0, AUTOMATA_CONTEXT_NUM), AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH)
     rules = boxS.get_complex_rules()
     final_state = boxS.final_states
     for rule in rules:

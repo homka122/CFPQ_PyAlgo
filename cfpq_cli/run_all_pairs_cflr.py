@@ -10,7 +10,7 @@ from cfpq_algo.setting.algo_setting import AlgoSetting
 from cfpq_algo.setting.algo_settings_manager import AlgoSettingsManager
 from cfpq_algo.setting.preprocessor_setting import preprocess_graph_and_grammar
 from cfpq_cli.time_limit import time_limit, TimeoutException
-from cfpq_model.cnf_grammar_template import CnfGrammarTemplate
+from cfpq_model.cnf_grammar_template import CnfGrammarTemplate, Symbol
 from cfpq_model.label_decomposed_graph import LabelDecomposedGraph
 from cfpq_add_context.add_contexts import add_context, normalize
 from cfpq_add_context.utils import verify
@@ -176,14 +176,16 @@ def run_all_pairs_cflr(
                 grammar_cfg = generate_intersection_cfg(context_num, depth, num_fields, False)
             old_size = len(grammar_cfg.binary_rules)
             if homka_group_automata:
-                grammar_cfg.group_by_automata_column()
+                # grammar_cfg.group_by_automata_column()
                 grammar = grammar_cfg.to_cnf_template(homka_group_automata)
                 grammar.group_rules({"(i": set([f"({i}" for i in range(graph.contexts_num)]), ")i": set([f"){i}" for i in range(graph.contexts_num)])})
             else:
+                grammar_cfg.ungroup_by_automata_column()
                 grammar = grammar_cfg.to_cnf_template(homka_group_automata)
 
             mapped_rules: dict[str, set[str]] = {}
             if "explicit" and "java" in graph_path:
+                # TODO: NOT GROUP WITH CONVERT GRAPH
                 for rsm_state in [7, 8, 9, 10]:
                     for automata_depth in range(depth + 2):
                         if homka_group_automata:
@@ -213,6 +215,35 @@ def run_all_pairs_cflr(
             need_save = True
     else:
         grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
+
+    if not homka_group_automata:
+        def _index_context(context: Symbol, index: int) -> Symbol:
+            if context.label == "(i":
+                return Symbol(f"({index}")
+            elif context.label == ")i":
+                return Symbol(f"){index}")
+            else:
+                return context
+        
+        
+        simple_rules: list[tuple[Symbol, Symbol]] = []
+        for lhs, rhs1 in grammar.simple_rules:
+            if rhs1.label in ["(i", ")i"]:
+                for i in range(context_num):
+                    simple_rules.append((_index_context(lhs, i), _index_context(rhs1, i)))
+            else:
+                simple_rules.append((lhs, rhs1))
+                
+        complex_rules: list[tuple[Symbol, Symbol, Symbol]] = []
+        for lhs, rhs1, rhs2 in grammar.complex_rules:
+            if rhs1.label in ["(i", ")i"]:
+                for i in range(context_num):
+                    complex_rules.append((_index_context(lhs, i), _index_context(rhs1, i), _index_context(rhs2, i)))
+            else:
+                complex_rules.append((lhs, rhs1, rhs2))
+                
+        grammar.simple_rules = simple_rules
+        grammar.complex_rules = complex_rules
 
     graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
 
