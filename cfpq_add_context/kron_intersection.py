@@ -803,28 +803,6 @@ class CFGIntersection:
                 new_binary_rules.append((lhs, rhs1, rhs2))
         self.binary_rules = new_binary_rules
 
-    def ungroup_by_automata_column(self) -> None:
-        def get_context_num(sym: _Sym) -> int:
-            if sym.is_term:
-                return 1
-            else:
-                return self.contexts_num ** (sym.depth % (self.depth + 1))
-
-        new_binary_rules: list[tuple[_Sym, _Sym, _Sym]] = []
-        for lhs, rhs1, rhs2 in self.binary_rules:
-            for lhs_context in range(get_context_num(lhs)):
-                for rhs1_context in range(get_context_num(rhs1)):
-                    for rhs2_context in range(get_context_num(rhs2)):
-                        new_binary_rules.append(
-                            (
-                                _Sym(lhs.rsm_state, lhs_context, self.contexts_num, lhs.is_term, lhs.term_label, lhs.depth),
-                                _Sym(rhs1.rsm_state, rhs1_context, self.contexts_num, rhs1.is_term, rhs1.term_label, rhs1.depth),
-                                _Sym(rhs2.rsm_state, rhs2_context, self.contexts_num, rhs2.is_term, rhs2.term_label, rhs2.depth),
-                            )
-                        )
-                        
-        self.binary_rules = new_binary_rules
-
     def iter_rules(self) -> Iterable[tuple[_Sym, _Sym | None, _Sym | None]]:
         result = []
         for lhs, rhs in self.simple_rules:
@@ -912,13 +890,15 @@ class CFGIntersection:
         return f"CFGIntersection(start={self.start}, rules={len(self.simple_rules) + len(self.binary_rules)})"
 
 
-def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM, write: bool = False) -> CFGIntersection:
+def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_NUM, group: bool, write: bool = False) -> CFGIntersection:
     print("Generating cfg...", end="")
     automata = Automata()
     rsm = PointsToRSM(RSM_FIELDS_NUM)
 
-    # automata.from_gsvgit_automata(generate(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH))
-    automata.generate_grouped(AUTOMATA_DEPTH)
+    if group:
+        automata.generate_grouped(AUTOMATA_DEPTH)
+    if not group:
+        automata.from_gsvgit_automata(generate(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH))
 
     rsm.add_other_labels(automata.get_unique_labels())
     automata.add_other_labels(rsm.get_unique_labels())

@@ -173,15 +173,10 @@ def run_all_pairs_cflr(
             if "taint" in graph_path:
                 grammar_cfg = generate_justfields_cfg(context_num, depth, num_fields, True)
             else:
-                grammar_cfg = generate_intersection_cfg(context_num, depth, num_fields, False)
+                grammar_cfg = generate_intersection_cfg(context_num, depth, num_fields, homka_group_automata, False)
             old_size = len(grammar_cfg.binary_rules)
-            if homka_group_automata:
                 # grammar_cfg.group_by_automata_column()
-                grammar = grammar_cfg.to_cnf_template(homka_group_automata)
-                grammar.group_rules({"(i": set([f"({i}" for i in range(graph.contexts_num)]), ")i": set([f"){i}" for i in range(graph.contexts_num)])})
-            else:
-                grammar_cfg.ungroup_by_automata_column()
-                grammar = grammar_cfg.to_cnf_template(homka_group_automata)
+            grammar = grammar_cfg.to_cnf_template(homka_group_automata)
 
             mapped_rules: dict[str, set[str]] = {}
             if "explicit" and "java" in graph_path:
