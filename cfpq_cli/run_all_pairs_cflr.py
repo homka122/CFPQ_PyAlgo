@@ -210,35 +210,6 @@ def run_all_pairs_cflr(
     else:
         grammar = CnfGrammarTemplate.read_from_pocr_cnf_file(grammar_path)
 
-    if not homka_group_automata:
-        def _index_context(context: Symbol, index: int) -> Symbol:
-            if context.label == "(i":
-                return Symbol(f"({index}")
-            elif context.label == ")i":
-                return Symbol(f"){index}")
-            else:
-                return context
-        
-        
-        simple_rules: list[tuple[Symbol, Symbol]] = []
-        for lhs, rhs1 in grammar.simple_rules:
-            if rhs1.label in ["(i", ")i"]:
-                for i in range(context_num):
-                    simple_rules.append((_index_context(lhs, i), _index_context(rhs1, i)))
-            else:
-                simple_rules.append((lhs, rhs1))
-                
-        complex_rules: list[tuple[Symbol, Symbol, Symbol]] = []
-        for lhs, rhs1, rhs2 in grammar.complex_rules:
-            if rhs1.label in ["(i", ")i"]:
-                for i in range(context_num):
-                    complex_rules.append((_index_context(lhs, i), _index_context(rhs1, i), _index_context(rhs2, i)))
-            else:
-                complex_rules.append((lhs, rhs1, rhs2))
-                
-        grammar.simple_rules = simple_rules
-        grammar.complex_rules = complex_rules
-
     graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
 
     if need_save:
