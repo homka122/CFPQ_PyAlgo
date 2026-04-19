@@ -179,7 +179,7 @@ def run_all_pairs_cflr(
             grammar = grammar_cfg.to_cnf_template(homka_group_automata)
 
             mapped_rules: dict[str, set[str]] = {}
-            if "explicit" and "java" in graph_path:
+            if "explicit" in graph_path or "java" in graph_path:
                 for rsm_state in [7, 8, 9, 10]:
                     for automata_depth in range(depth + 2):
                         if homka_group_automata:
