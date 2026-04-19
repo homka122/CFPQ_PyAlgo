@@ -31,7 +31,7 @@ def generate(number_of_contexts: int, depth: int, is_log=False) -> Matrix:
 
     start = 0
     current_level = [start]
-    edges = [(start, start, SIGMA_WITHOUT_CONTEXTS)]
+    edges = [(start, start, SIGMA_WITHOUT_OPEN_CONTEXTS)]
 
     for level in range(0, depth):
         next_level = range(current_level[-1] + 1, current_level[-1] + 1 + pow(number_of_contexts, level + 1))
