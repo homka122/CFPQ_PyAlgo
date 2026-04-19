@@ -276,4 +276,9 @@ def main(raw_args: List[str]):
 
 
 if __name__ == "__main__":  # pragma: no cover
-    main(raw_args=sys.argv[1:])  # pragma: no cover
+    try:
+        main(raw_args=sys.argv[1:])
+    except BrokenPipeError:
+        raise SystemExit(1)
+    except KeyboardInterrupt:
+        raise SystemExit(130)
