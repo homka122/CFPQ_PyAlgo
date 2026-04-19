@@ -21,7 +21,7 @@ import graphblas
 
 def convert_graph(num_contexts: int, graph_path: str) -> str:
     with open(graph_path, "r") as file:
-        new_file_name = f"/tmp/{os.path.basename(graph_path).split('.')[0]}_new_indexed_{num_contexts}.g"
+        new_file_name = f"/tmp/explicit_{os.path.basename(graph_path).split('.')[0]}_new_indexed_{num_contexts}.g"
         with open(new_file_name, "w") as new_file:
             for line in file:
                 line = line.strip()
@@ -180,7 +180,6 @@ def run_all_pairs_cflr(
 
             mapped_rules: dict[str, set[str]] = {}
             if "explicit" and "java" in graph_path:
-                # TODO: NOT GROUP WITH CONVERT GRAPH
                 for rsm_state in [7, 8, 9, 10]:
                     for automata_depth in range(depth + 2):
                         if homka_group_automata:
