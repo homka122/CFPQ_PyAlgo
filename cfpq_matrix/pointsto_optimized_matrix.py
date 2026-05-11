@@ -290,42 +290,18 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         assert input_shape[0] == 1
         output_shape = (self.context_num, input_shape[1] // self.context_num)
 
-        cell_h = self.block_space.cell_shape[0]
-        cell_w = self.block_space.cell_shape[1]
         new_cell_shape = (output_shape[0] * self.n, output_shape[1] * self.n)
-        is_cell = self.block_space.is_single_cell(self.shape)
 
-        (rows, cols, values) = self.to_unoptimized().to_coo()
-        if not is_cell:
-            orientation = self.block_space.get_block_matrix_orientation(self.shape)
-            if orientation == BlockMatrixOrientation.VERTICAL:
-                cols = cols + (rows // cell_h * cell_w)
-                rows = rows % cell_h
+        def transform(rows, cols, values, cell_h, cell_w):
+            rows = rows + (cols // cell_h % self.context_num * cell_h)
+            cols = cols % cell_h + cols // (cell_h * self.context_num) * cell_h
 
-        rows = rows + (cols // self.n % self.context_num * self.n)
-        cols = (
-            cols % self.n
-            + (cols % (input_shape[1] * self.n) // (self.n * self.context_num) * self.n)
-            + (cols // (input_shape[1] * self.n) * output_shape[1] * self.n)
-        )
+            return rows, cols, values, None
 
-        nrows, ncols = new_cell_shape[0], new_cell_shape[1]
-        if not is_cell:
-            ncols *= self.block_space.block_count
+        base = self._transform_matrix(new_cell_shape, BlockMatrixOrientation.HORIZONTAL, transform)
 
-        base = Matrix.from_coo(
-            rows,
-            cols,
-            values,
-            nrows=nrows,
-            ncols=ncols,
-        )
-
-        new_block_space = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
-        base = self.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_space)
         self._base = base
-        self.block_space = new_block_space
-        return
+        self.block_space = base.block_matrix_space
 
     @staticmethod
     def get_block_diag_matrix(matrix: OptimizedMatrix, graph_size: int) -> OptimizedMatrix:
