@@ -456,7 +456,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
-            ncols *= matrix.block_matrix_space.block_count
+            nrows *= matrix.block_matrix_space.block_count
 
         base = Matrix.from_coo((rows), (cols), (values), nrows=nrows, ncols=ncols, dup_op=op)
 
