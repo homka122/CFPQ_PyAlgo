@@ -338,14 +338,16 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         assert isinstance(matrix.base, BlockMatrix)
 
         cell_h = matrix.block_space.cell_shape[0]
-        new_cell_shape = (matrix.block_space.cell_shape[0] * count, matrix.block_space.cell_shape[1])
+        cell_w = matrix.block_space.cell_shape[1]
+        assert (cell_h == cell_w)
+        new_cell_shape = (cell_h * count, cell_w)
         is_cell = matrix.block_space.is_single_cell(matrix.shape)
 
         (rows, cols, values) = matrix.to_unoptimized().to_coo()
         if not is_cell:
             orientation = matrix.block_space.get_block_matrix_orientation(matrix.shape)
             if orientation == BlockMatrixOrientation.VERTICAL:
-                cols = cols + (rows // cell_h * cell_h)
+                cols = cols + (rows // cell_h * cell_w)
                 rows = rows % cell_h
 
         all_rows = []
