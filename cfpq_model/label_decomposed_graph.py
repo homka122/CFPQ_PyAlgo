@@ -354,6 +354,10 @@ class OptimizedLabelDecomposedGraph:
             if swap_operands:
                 rhs1, rhs2 = rhs2, rhs1
             if rhs1 in self.matrices and rhs2 in other.matrices:
+                # import csv
+                # with open("data.csv", "a", newline="") as file:
+                #     writer = csv.writer(file)
+                #     writer.writerow([self.matrices[rhs1].nvals, other.matrices[rhs2].nvals])
                 if not self.group:
                     mxm = self.matrices[rhs1].mxm(
                         other.matrices[rhs2],
@@ -362,68 +366,15 @@ class OptimizedLabelDecomposedGraph:
                     )
                     mxm = self.block_matrix_space.automize_block_operations(mxm)
                     accum.iadd_by_symbol(lhs, mxm, op.monoid)
-                    # print(accum.nvals)
                     continue
-                if not swap_operands:
-                    left = self.matrices[leftrhs]
-                    right = other.matrices[rightrhs]
                 else:
-                    left = other.matrices[leftrhs]
-                    right = self.matrices[rightrhs]
-
-                mxm = self.matrices[rhs1].mxm(
-                    other.matrices[rhs2],
-                    swap_operands=swap_operands,
-                    op=op,
-                )
-                assert isinstance(mxm, PointsToMatrix)
-
-                if leftrhs.label.startswith(")") and (
-                    PointsToMatrix.get_depth_from_symbol(lhs.label) == 0 or PointsToMatrix.get_depth_from_symbol(lhs.label) == self.depth + 1
-                ):
-                    assert isinstance(left, PointsToMatrix) and isinstance(right, PointsToMatrix)
-                    # new_cell_shape = (left.block_space.cell_shape[0], right.block_space.cell_shape[1])
-                    base = PointsToMatrix.reduce_column(
-                        mxm.base,
-                        op.monoid,
-                        self.vertex_count,
-                        self.block_matrix_space.block_count,
-                    )
-                    mxm = PointsToMatrix(
-                        base,
-                        "State",
-                        self.vertex_count,
-                        self.contexts_num,
-                        PointsToMatrix.get_depth_from_symbol(lhs.label),
-                    )
-                elif leftrhs.label.startswith("(") and PointsToMatrix.get_depth_from_symbol(lhs.label) == self.depth:
-                    mxm = PointsToMatrix(
-                        (
-                            PointsToMatrix.get_hyper_row(
-                                mxm,
-                                self.contexts_num**self.depth,
-                                vertex_count=self.vertex_count,
-                                block_count=self.block_matrix_space.block_count,
-                            )
-                        ),
-                        "State",
-                        self.vertex_count,
-                        self.contexts_num,
-                        PointsToMatrix.get_depth_from_symbol(lhs.label),
-                    )
-                else:
-                    assert isinstance(left, PointsToMatrix) and isinstance(right, PointsToMatrix)
-                    new_cell_shape = (left.block_space.cell_shape[0], right.block_space.cell_shape[1])
-                    mxm = PointsToMatrix(
-                        mxm.base,
-                        "State",
-                        self.vertex_count,
-                        self.contexts_num,
-                        PointsToMatrix.get_depth_from_symbol(lhs.label),
+                    mxm = self.matrices[rhs1].mxm(
+                        other.matrices[rhs2],
+                        swap_operands=swap_operands,
+                        op=op,
                     )
 
-                accum.iadd_by_symbol(lhs, mxm, op.monoid)
-                # print(accum.nvals)
+                    accum.iadd_by_symbol(lhs, mxm, op.monoid)
         return accum
 
     def rmxm(

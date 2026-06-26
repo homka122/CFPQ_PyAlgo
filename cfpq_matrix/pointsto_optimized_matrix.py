@@ -1,3 +1,4 @@
+from coverage.parser import Block
 from numba import njit, prange
 import numba as nb
 from cfpq_matrix.block.block_matrix_space_impl import BlockMatrixSpaceImpl
@@ -372,20 +373,16 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         base = matrix.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
         return base
 
-    @staticmethod
-    def get_hyper_row(matrix: OptimizedMatrix, count: int, vertex_count: int, block_count: int) -> OptimizedMatrix:
-        assert isinstance(matrix, PointsToMatrix)
-        assert isinstance(matrix.base, BlockMatrix)
-
-        cell_h = matrix.block_space.cell_shape[0]
-        cell_w = matrix.block_space.cell_shape[1]
+    def get_hyper_row(self, count: int) -> BlockMatrix:
+        cell_h = self.block_space.cell_shape[0]
+        cell_w = self.block_space.cell_shape[1]
         assert(cell_h == cell_w)
         new_cell_shape = (cell_h, cell_w * count)
-        is_cell = matrix.block_space.is_single_cell(matrix.shape)
+        is_cell = self.block_space.is_single_cell(self.shape)
 
-        (rows, cols, values) = matrix.to_unoptimized().to_coo()
-        if not matrix.block_space.is_single_cell(matrix.shape):
-            orientation = matrix.block_space.get_block_matrix_orientation(matrix.shape)
+        (rows, cols, values) = self.to_unoptimized().to_coo()
+        if not self.block_space.is_single_cell(self.shape):
+            orientation = self.block_space.get_block_matrix_orientation(self.shape)
             if orientation == BlockMatrixOrientation.HORIZONTAL:
                 rows = rows + (cols // cell_w * cell_h)
                 cols = cols % cell_w
@@ -398,7 +395,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
-            nrows *= matrix.block_space.block_count
+            nrows *= self.block_space.block_count
 
         base = Matrix.from_coo(
             np.concatenate(rows),
@@ -408,36 +405,33 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             ncols=ncols,
         )
 
-        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, matrix.base.block_matrix_space.block_count)
-        base = matrix.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
+        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
+        base = new_block_matrix.automize_block_operations(MatrixToOptimizedAdapter(base))
         return base
 
-    @staticmethod
-    def reduce_column(matrix: OptimizedMatrix, op: Monoid, vertex_count: int, block_count: int) -> OptimizedMatrix:
-        assert isinstance(matrix, BlockMatrix)
+    def reduce_column(self, op: Monoid) -> BlockMatrix:
+        cell_h = self.block_space.cell_shape[0]
+        cell_w = self.block_space.cell_shape[1]
+        new_cell_shape = (self.n, self.n)
+        is_cell = self.block_space.is_single_cell(self.shape)
 
-        cell_h = matrix.block_matrix_space.cell_shape[0]
-        cell_w = matrix.block_matrix_space.cell_shape[1]
-        new_cell_shape = (vertex_count, vertex_count)
-        is_cell = matrix.block_matrix_space.is_single_cell(matrix.shape)
-
-        (rows, cols, values) = matrix.to_unoptimized().to_coo()
+        (rows, cols, values) = self.to_unoptimized().to_coo()
         if not is_cell:
-            orientation = matrix.block_matrix_space.get_block_matrix_orientation(matrix.shape)
+            orientation = self.block_space.get_block_matrix_orientation(self.shape)
             if orientation == BlockMatrixOrientation.VERTICAL:
                 cols = cols + (rows // cell_h * cell_w)
                 rows = rows % cell_h
 
-        rows = rows % vertex_count
+        rows = rows % self.n
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
-            ncols *= matrix.block_matrix_space.block_count
+            ncols *= self.block_space.block_count
 
         base = Matrix.from_coo((rows), (cols), (values), nrows=nrows, ncols=ncols, dup_op=op)
 
-        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, block_count)
-        base = matrix.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
+        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
+        base = new_block_matrix.automize_block_operations(MatrixToOptimizedAdapter(base))
         return base
 
     @staticmethod
@@ -637,14 +631,25 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
     def iadd(self, other: OptimizedMatrix, op: Monoid) -> None:
         assert isinstance(other, PointsToMatrix)
+        assert isinstance(other.base, BlockMatrix)
         assert self.type == other.type
 
-        if self._is_flatted():
-            other._flat_matrix()
-        else:
-            other._group_matrix()
+        self._flat_matrix()
 
-        self.base.iadd(other.base, op)
+        self_shape = self._get_inner_shape()
+        other_shape = other._get_inner_shape()
+
+        if self_shape != (1, 1) and other_shape == (1, 1):
+            base = other.get_hyper_row(self.context_num**self.depth)
+        elif self_shape == (1, 1) and other_shape != (1, 1):
+            base = other.reduce_column(op)
+        elif other._is_grouped() and other_shape[1] * self.context_num == self_shape[1]:
+            other._flat_matrix()
+            base = other.base
+        else:
+            base = other.base
+
+        self.base.iadd(base, op)
 
     def rsub(self, other: OptimizedMatrix, op: Callable[[OptimizedMatrix, OptimizedMatrix], OptimizedMatrix]) -> OptimizedMatrix:
         assert isinstance(other, PointsToMatrix)
