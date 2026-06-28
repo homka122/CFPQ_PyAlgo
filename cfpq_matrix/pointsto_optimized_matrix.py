@@ -23,9 +23,8 @@ from cfpq_matrix.block.block_matrix import BlockMatrix
 
 
 class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
-    def __init__(self, base: OptimizedMatrix, type: Literal["RSM", "Context", "State"], n: int, context_num: int, depth: int = -1):
-        assert isinstance(base, BlockMatrix)
-        self._base = base
+    def __init__(self, base: BlockMatrix, type: Literal["RSM", "Context", "State"], n: int, context_num: int, depth: int = -1):
+        self._base: BlockMatrix = base
         assert (type == "State" and depth != -1) or (type == "RSM") or (type == "Context")
         self.type: Literal["State", "RSM", "Context"] = type
         self.depth: int = depth
@@ -136,8 +135,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         base = Matrix.from_coo(rows, cols, values, nrows=nrows, ncols=ncols, dup_op=op)
 
         new_block_space = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
-        base = self.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_space)
-        assert isinstance(base, BlockMatrix)
+        base = new_block_space.automize_block_operations(MatrixToOptimizedAdapter(base))
 
         return base
 
@@ -161,6 +159,9 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             return rows, cols, values, None
 
         base = self._transform_matrix(new_cell_shape, BlockMatrixOrientation.VERTICAL, transform)
+
+        base = self.base.optimize_similarly_with_block(base.base, base.block_matrix_space)
+        assert(isinstance(base, BlockMatrix))
 
         self._base = base
         self.block_space = base.block_matrix_space
@@ -190,7 +191,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
         return base
 
-    def _reduce_diag_matrix(self) -> OptimizedMatrix:
+    def _reduce_diag_matrix(self) -> BlockMatrix:
         assert isinstance(self.base, BlockMatrix)
 
         input_shape = self._get_inner_shape()
@@ -305,7 +306,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         self.block_space = base.block_matrix_space
 
     @staticmethod
-    def get_block_diag_matrix(matrix: OptimizedMatrix, graph_size: int) -> OptimizedMatrix:
+    def get_block_diag_matrix(matrix: OptimizedMatrix, graph_size: int) -> BlockMatrix:
         assert isinstance(matrix, PointsToMatrix)
         assert isinstance(matrix.base, BlockMatrix)
 
@@ -330,7 +331,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         base = Matrix.from_coo((rows), (cols), (values), nrows=nrows, ncols=ncols)
 
         new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, matrix.block_space.block_count)
-        base = matrix.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
+        base = new_block_matrix.automize_block_operations(MatrixToOptimizedAdapter(base))
         return base
 
     @staticmethod
@@ -464,7 +465,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         return base
 
     @property
-    def base(self) -> OptimizedMatrix:
+    def base(self) -> BlockMatrix:
         return self._base
 
     # [1x1] matrix to [nums x nums] diag matrix
@@ -503,26 +504,30 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             ncols=ncols,
         )
 
-        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, self.base.block_matrix_space.block_count)
+        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
         base = self.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
         assert isinstance(base, BlockMatrix)
         return base
 
-    def _mxm_rsm(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> "PointsToMatrix":
+    def _mxm_rsm(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> BlockMatrix:
         # RSM [1x1] x State [1 x nums^depth] = State [1 x nums^depth]
         left, right = (self, other) if not swap_operands else (other, self)
+        left_block, right_block = (left.base, right.base)
 
         if left.nvals <= right.nvals:
             if right._is_grouped():
-                diag = left._to_context_diag_matrix()
-                base = right.base.optimize_similarly(diag.mxm(right.base, op))
-            else:
-                base = right.base.optimize_similarly(left.base.mxm(right.base, op))
+                # diag RSM [nums x nums] x State [nums x nums^depth-1] = State [nums x nums^depth-1]
+                left_block = left._to_context_diag_matrix()
         else:
             right._flat_matrix()
-            base = right.base.optimize_similarly(left.base.mxm(right.base, op))
+            right_block = right.base
 
-        return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
+        if swap_operands:
+            base = right_block.mxm(left_block, op, swap_operands)
+        else:
+            base = left_block.mxm(right_block, op, swap_operands)
+
+        return BlockMatrixSpaceImpl(right_block.block_matrix_space.cell_shape, right_block.block_matrix_space.block_count).automize_block_operations(base)
 
     def _mxm_state(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
         # State [1 x nums^depth] x State [1 x nums^depth] = State [1 x nums^depth] (wise multiplication)
@@ -531,15 +536,18 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         left._flat_matrix()
         right._flat_matrix()
 
+        # TODO calculate diag nvals so we can decide what cost less
         if left.nvals <= right.nvals:
             rotated = left._flat_matrix_rotate()
             new_block_space = BlockMatrixSpaceImpl((right.block_space.cell_shape[1], right.block_space.cell_shape[1]), right.block_space.block_count)
             base = new_block_space.automize_block_operations(rotated.mxm(right.base, op))
             base = PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
-            base = base._reduce_diag_matrix()
+            base = base._reduce_diag_matrix().base
         else:
             diag = right.get_block_diag_matrix(right, self.n)
-            base = self.base.optimize_similarly(left.base.mxm(diag, op))
+            base = left.base.mxm(diag, op)
+
+        base = BlockMatrixSpaceImpl(right.block_space.cell_shape, right.block_space.block_count).automize_block_operations(base)
 
         return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
 
@@ -594,6 +602,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         if right_shape[0] == 1 and right_shape[1] == 1:
             # [)_0, ..., )_nums]^T x [S] = [)_0*S, ..., )_nums*S]^T
             base = left.base.optimize_similarly(left.base.mxm(right.base, op))
+            assert(isinstance(base, BlockMatrix))
         else:
             # [)_0, ..., )_nums]^T x State [1 x nums^(depth+1)] = State [nums x nums^(depth+1)]
             right._flat_matrix()
@@ -610,7 +619,8 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         left, right = (self, other) if not swap_operands else (other, self)
         assert right.type == "State"
         if left.type == "RSM":
-            return self._mxm_rsm(other, op, swap_operands)
+            base = self._mxm_rsm(other, op, swap_operands)
+            return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
         elif left.type == "Context":
             left_shape = left._get_inner_shape()
             if left_shape[0] == 1:
@@ -667,14 +677,6 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         return self.base.to_unoptimized()
 
     def optimize_similarly(self, other: OptimizedMatrix) -> OptimizedMatrix:
-        return PointsToMatrix(self.base.optimize_similarly(other), self.type, self.n, self.context_num, self.depth)
-
-
-if __name__ == "__main__":
-    testMatrix1 = Matrix.from_coo([0, 0, 0, 0, 0, 0], [0, 1, 2, 3, 4, 5], [True, False, True, True, True, False], nrows=1, ncols=9)
-    testMatrix1 = PointsToMatrix(MatrixToOptimizedAdapter(testMatrix1), "State", 1, 3, 2)
-    print(testMatrix1)
-    grouped = testMatrix1._group_matrix()
-    print(grouped)
-    flatted = testMatrix1._flat_matrix()
-    print(flatted)
+        base = self.base.optimize_similarly(other)
+        assert(isinstance(base, BlockMatrix))
+        return PointsToMatrix(base, self.type, self.n, self.context_num, self.depth)
