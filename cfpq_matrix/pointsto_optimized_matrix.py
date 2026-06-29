@@ -435,32 +435,29 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         base = new_block_matrix.automize_block_operations(MatrixToOptimizedAdapter(base))
         return base
 
-    @staticmethod
-    def reduce_row(matrix: OptimizedMatrix, op: Monoid, vertex_count: int, block_count: int) -> BlockMatrix:
-        assert isinstance(matrix, BlockMatrix)
+    def reduce_row(self, op: Monoid) -> BlockMatrix:
+        cell_h = self.block_space.cell_shape[0]
+        cell_w = self.block_space.cell_shape[1]
+        new_cell_shape = (self.n, self.n)
+        is_cell = self.block_space.is_single_cell(self.shape)
 
-        cell_h = matrix.block_matrix_space.cell_shape[0]
-        cell_w = matrix.block_matrix_space.cell_shape[1]
-        new_cell_shape = (vertex_count, vertex_count)
-        is_cell = matrix.block_matrix_space.is_single_cell(matrix.shape)
-
-        (rows, cols, values) = matrix.to_unoptimized().to_coo()
+        (rows, cols, values) = self.to_unoptimized().to_coo()
         if not is_cell:
-            orientation = matrix.block_matrix_space.get_block_matrix_orientation(matrix.shape)
+            orientation = self.block_space.get_block_matrix_orientation(self.shape)
             if orientation == BlockMatrixOrientation.HORIZONTAL:
                 rows = rows + (cols // cell_w * cell_h)
                 cols = cols % cell_w
 
-        cols = cols % vertex_count
+        cols = cols % self.n
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
-            nrows *= matrix.block_matrix_space.block_count
+            nrows *= self.block_space.block_count
 
         base = Matrix.from_coo((rows), (cols), (values), nrows=nrows, ncols=ncols, dup_op=op)
 
-        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, block_count)
-        base = matrix.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
+        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
+        base = self.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
         assert isinstance(base, BlockMatrix)
         return base
 
@@ -557,23 +554,30 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
         return BlockMatrixSpaceImpl(right.block_space.cell_shape, right.block_space.block_count).automize_block_operations(base)
 
-    def _mxm_open_context_single(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
+    def _mxm_open_context_single(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> BlockMatrix:
         # [(_0, ..., (_nums] x [S] => [(_0, ..., (_nums] x [S, ..., S]^T = [S]
         assert isinstance(other, PointsToMatrix)
         left, right = (self, other) if not swap_operands else (other, self)
+        left_block, right_block = (left.reduced, right.base)
 
-        if left.reduced is None:
-            left.reduced = left.reduce_row(left.base, op.monoid, left.n, left.block_space.block_count)
+        if left_block is None:
+            left.reduced = left.reduce_row(op.monoid)
+            left_block = left.reduced
 
-        left_shape = left.reduced.shape[0] // self.n, left.reduced.shape[1] // self.n
+        left_shape = left_block.shape[0] // self.n, left_block.shape[1] // self.n
         right_shape = right._get_inner_shape()
         assert(left_shape == (1, 1) and right_shape == (1, 1))
 
+        if swap_operands:
+            base = right_block.mxm(left_block, op, swap_operands)
+        else:
+            base = left_block.mxm(right_block, op, swap_operands)
+
         base = BlockMatrixSpaceImpl((right.n, right.n), right.block_space.block_count).automize_block_operations(
-            left.reduced.mxm(right.base, op)
+            base
         )
 
-        return PointsToMatrix(base, "State", right.n, right.context_num, right.depth)
+        return base
 
     def _mxm_open_context_multiple(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
         # [(_0, ..., (_nums] x State [nums x nums^(depth-1)] = State [1 x nums^(depth-1)]
@@ -634,7 +638,8 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                 right_shape = right._get_inner_shape()
                 if right_shape[0] == 1 and right_shape[1] == 1:
                     # [(_0, ..., (_nums] x [S] => [(_0, ..., (_nums] x [S, ..., S]^T = [S]
-                    return self._mxm_open_context_single(other, op, swap_operands)
+                    base = self._mxm_open_context_single(other, op, swap_operands)
+                    return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
                 else:
                     # [(_0, ..., (_nums] x State [nums x nums^(depth-1)] = State [1 x nums^(depth-1)]
                     return self._mxm_open_context_multiple(other, op, swap_operands)
