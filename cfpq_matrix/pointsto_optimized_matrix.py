@@ -166,7 +166,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         self._base = base
         self.block_space = base.block_matrix_space
 
-    def _flat_matrix_rotate(self) -> OptimizedMatrix:
+    def _flat_matrix_rotate(self) -> BlockMatrix:
         assert self._is_flatted()
 
         assert isinstance(self.base, BlockMatrix)
@@ -188,6 +188,8 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             return rows, cols, values, None
 
         base = self._transform_matrix(new_cell_shape, BlockMatrixOrientation.HORIZONTAL, transform)
+        base = self.base.optimize_similarly_with_block(base.base, base.block_matrix_space)
+        assert(isinstance(base, BlockMatrix))
 
         return base
 
@@ -305,19 +307,15 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         self._base = base
         self.block_space = base.block_matrix_space
 
-    @staticmethod
-    def get_block_diag_matrix(matrix: OptimizedMatrix, graph_size: int) -> BlockMatrix:
-        assert isinstance(matrix, PointsToMatrix)
-        assert isinstance(matrix.base, BlockMatrix)
-
-        cell_h = matrix.block_space.cell_shape[0]
-        cell_w = matrix.block_space.cell_shape[1]
+    def get_block_diag_matrix(self) -> BlockMatrix:
+        cell_h = self.block_space.cell_shape[0]
+        cell_w = self.block_space.cell_shape[1]
         new_cell_shape = (cell_w, cell_w)
-        is_cell = matrix.block_space.is_single_cell(matrix.shape)
+        is_cell = self.block_space.is_single_cell(self.shape)
 
-        (rows, cols, values) = matrix.to_unoptimized().to_coo()
+        (rows, cols, values) = self.to_unoptimized().to_coo()
         if not is_cell:
-            orientation = matrix.block_space.get_block_matrix_orientation(matrix.shape)
+            orientation = self.block_space.get_block_matrix_orientation(self.shape)
             if orientation == BlockMatrixOrientation.HORIZONTAL:
                 rows = rows + (cols // cell_w * cell_h)
                 cols = cols % cell_w
@@ -326,12 +324,14 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
-            nrows *= matrix.block_space.block_count
+            nrows *= self.block_space.block_count
 
-        base = Matrix.from_coo((rows), (cols), (values), nrows=nrows, ncols=ncols)
+        base = MatrixToOptimizedAdapter(Matrix.from_coo((rows), (cols), (values), nrows=nrows, ncols=ncols))
 
-        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, matrix.block_space.block_count)
-        base = new_block_matrix.automize_block_operations(MatrixToOptimizedAdapter(base))
+        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
+        base = self.base.optimize_similarly_with_block(base, new_block_matrix)
+        assert(isinstance(base, BlockMatrix))
+
         return base
 
     @staticmethod
@@ -529,27 +529,33 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
         return BlockMatrixSpaceImpl(right_block.block_matrix_space.cell_shape, right_block.block_matrix_space.block_count).automize_block_operations(base)
 
-    def _mxm_state(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
+    def _mxm_state(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> BlockMatrix:
         # State [1 x nums^depth] x State [1 x nums^depth] = State [1 x nums^depth] (wise multiplication)
         left, right = (self, other) if not swap_operands else (other, self)
-
         left._flat_matrix()
         right._flat_matrix()
 
+        left_block, right_block = (left.base, right.base)
+
         # TODO calculate diag nvals so we can decide what cost less
         if left.nvals <= right.nvals:
-            rotated = left._flat_matrix_rotate()
+            left_block = left._flat_matrix_rotate()
+            if swap_operands:
+                base = right_block.mxm(left_block, op, swap_operands)
+            else:
+                base = left_block.mxm(right_block, op, swap_operands)
             new_block_space = BlockMatrixSpaceImpl((right.block_space.cell_shape[1], right.block_space.cell_shape[1]), right.block_space.block_count)
-            base = new_block_space.automize_block_operations(rotated.mxm(right.base, op))
+            base = new_block_space.automize_block_operations(base)
             base = PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
             base = base._reduce_diag_matrix().base
         else:
-            diag = right.get_block_diag_matrix(right, self.n)
-            base = left.base.mxm(diag, op)
+            right_block = right.get_block_diag_matrix()
+            if swap_operands:
+                base = right_block.mxm(left_block, op, swap_operands)
+            else:
+                base = left_block.mxm(right_block, op, swap_operands)
 
-        base = BlockMatrixSpaceImpl(right.block_space.cell_shape, right.block_space.block_count).automize_block_operations(base)
-
-        return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
+        return BlockMatrixSpaceImpl(right.block_space.cell_shape, right.block_space.block_count).automize_block_operations(base)
 
     def _mxm_open_context_single(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
         # [(_0, ..., (_nums] x [S] => [(_0, ..., (_nums] x [S, ..., S]^T = [S]
@@ -635,7 +641,9 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             else:
                 return self._mxm_closed_context(other, op, swap_operands=swap_operands)
         elif left.type == "State":
-            return self._mxm_state(other, op, swap_operands)
+            # State [1 x nums^depth] x State [1 x nums^depth] = State [1 x nums^depth] (wise multiplication)
+            base = self._mxm_state(other, op, swap_operands)
+            return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
         else:
             raise ValueError("Unknown matrix type")
 
