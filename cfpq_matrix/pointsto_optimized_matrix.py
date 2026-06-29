@@ -618,25 +618,35 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
         return base
 
-    def _mxm_closed_context(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
+    def _mxm_closed_context(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> BlockMatrix:
         # closed context [)_0, ..., )_nums]^T
         left, right = (self, other) if not swap_operands else (other, self)
+        left_block, right_block = (left.base, right.base)
 
         right_shape = right._get_inner_shape()
         if right_shape[0] == 1 and right_shape[1] == 1:
             # [)_0, ..., )_nums]^T x [S] = [)_0*S, ..., )_nums*S]^T
-            base = left.base.optimize_similarly(left.base.mxm(right.base, op))
+            if swap_operands:
+                base = right_block.mxm(left_block, op, swap_operands)
+            else:
+                base = left_block.mxm(right_block, op, swap_operands)
+            base = left_block.block_matrix_space.automize_block_operations(base)
             assert(isinstance(base, BlockMatrix))
         else:
             # [)_0, ..., )_nums]^T x State [1 x nums^(depth+1)] = State [nums x nums^(depth+1)]
             right._flat_matrix()
+            right_block = right.base
             shape = right._get_inner_shape()
+            if swap_operands:
+                base = right_block.mxm(left_block, op, swap_operands)
+            else:
+                base = left_block.mxm(right_block, op, swap_operands)
             base = BlockMatrixSpaceImpl((self.n * self.context_num, self.n * shape[1]), self.block_space.block_count).automize_block_operations(
-                left.base.mxm(right.base, op)
+                base
             )
             # return self.base.mxm(other.base, op, swap_operands=swap_operands)
 
-        return PointsToMatrix(base, "State", self.n, self.context_num, right.depth)
+        return base
 
     def mxm(self, other: OptimizedMatrix, op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
         assert isinstance(other, PointsToMatrix)
@@ -659,7 +669,9 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                     base = self._mxm_open_context_multiple(other, op, swap_operands)
                     return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
             else:
-                return self._mxm_closed_context(other, op, swap_operands=swap_operands)
+                # closed context [)_0, ..., )_nums]^T
+                base = self._mxm_closed_context(other, op, swap_operands=swap_operands)
+                return PointsToMatrix(base, "State", self.n, self.context_num, self.depth)
         elif left.type == "State":
             # State [1 x nums^depth] x State [1 x nums^depth] = State [1 x nums^depth] (wise multiplication)
             base = self._mxm_state(other, op, swap_operands)
