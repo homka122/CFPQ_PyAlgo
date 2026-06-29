@@ -1,3 +1,5 @@
+from cfpq_matrix.empty_optimized_matrix import EmptyOptimizedMatrix
+from cfpq_matrix.format_optimized_matrix import FormatOptimizedMatrix
 from cfpq_matrix.block.block_matrix_space import BlockMatrixSpace
 from pandas.core.internals.blocks import new_block
 from collections import defaultdict
@@ -330,10 +332,17 @@ class OptimizedLabelDecomposedGraph:
         )
 
         if not self.group:
-            result.matrices: dict[Symbol, OptimizedMatrix] = {
-                symbol: (self.block_matrix_space.automize_block_operations(self.matrices[symbol].rsub(matrix, op)) if symbol in self else matrix)
-                for symbol, matrix in other.matrices.items()
-            }
+            result.matrices: dict[Symbol, OptimizedMatrix] = {}
+            for symbol, matrix in other.matrices.items():
+                if symbol in self:
+                    base = self.matrices[symbol].rsub(matrix, op)
+                else:
+                    base = MatrixToOptimizedAdapter(matrix.to_unoptimized().dup())
+                result.matrices[symbol] = matrix.block_matrix_space.automize_block_operations(self.matrix_optimizer(base.base))
+            # result.matrices: dict[Symbol, OptimizedMatrix] = {
+                # symbol: (self.block_matrix_space.automize_block_operations(self.matrices[symbol].rsub(matrix, op)) if symbol in self else matrix)
+                # for symbol, matrix in other.matrices.items()
+            # }
         else:
             result.matrices = {symbol: (self.matrices[symbol].rsub(matrix, op) if symbol in self else matrix) for symbol, matrix in other.matrices.items()}
 

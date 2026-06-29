@@ -304,6 +304,9 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
         base = self._transform_matrix(new_cell_shape, BlockMatrixOrientation.HORIZONTAL, transform)
 
+        base = self.base.optimize_similarly_with_block(base.base, base.block_matrix_space)
+        assert(isinstance(base, BlockMatrix))
+
         self._base = base
         self.block_space = base.block_matrix_space
 
