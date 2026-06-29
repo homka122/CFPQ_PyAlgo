@@ -238,7 +238,7 @@ class OptimizedLabelDecomposedGraph:
             #     depth=PointsToMatrix.get_depth_from_symbol(symbol.label),
             # )
             if not optimized_graph.group:
-                optimized_graph.matrices[symbol] = unoptimized_graph.block_matrix_space.automize_block_operations(MatrixToOptimizedAdapter(matrix))
+                optimized_graph.matrices[symbol] = unoptimized_graph.block_matrix_space.automize_block_operations(matrix_optimizer(matrix))
                 continue
             type = PointsToMatrix.get_type_from_symbol(symbol.label)
             depth_local = PointsToMatrix.get_depth_from_symbol(symbol.label)
@@ -251,8 +251,9 @@ class OptimizedLabelDecomposedGraph:
             if symbol == Symbol(")i"):
                 new_block_space_size = (n * (unoptimized_graph.contexts_num**depth_local), n)
             new_block_space = BlockMatrixSpaceImpl(new_block_space_size, unoptimized_graph.block_matrix_space.block_count)
+            base = matrix_optimizer(matrix)
             optimized_graph.matrices[symbol] = PointsToMatrix(
-                base=new_block_space.automize_block_operations(MatrixToOptimizedAdapter(matrix)),
+                base=new_block_space.automize_block_operations(base),
                 type=type,
                 n=n,
                 context_num=unoptimized_graph.contexts_num,
@@ -388,7 +389,7 @@ class OptimizedLabelDecomposedGraph:
             return (
                 self.matrices[symbol]
                 if symbol in self
-                else self.block_matrix_space.automize_block_operations(MatrixToOptimizedAdapter(self._create_matrix_for_symbol(symbol)))
+                else self.block_matrix_space.automize_block_operations(self.matrix_optimizer(self._create_matrix_for_symbol(symbol)))
             )
 
         if symbol in self:
@@ -421,7 +422,7 @@ class OptimizedLabelDecomposedGraph:
         if symbol.is_indexed:
             nrows_base *= self.block_matrix_space.block_count
 
-        base = MatrixToOptimizedAdapter(Matrix(self.dtype, nrows_base, ncols, name=symbol.label))
+        base = self.matrix_optimizer(Matrix(self.dtype, nrows_base, ncols, name=symbol.label))
         block_space = BlockMatrixSpaceImpl((nrows, ncols), self.block_matrix_space.block_count)
         base = block_space.automize_block_operations(base)
 

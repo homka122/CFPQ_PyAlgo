@@ -21,7 +21,7 @@ class EmptyOptimizedMatrix(AbstractOptimizedMatrixDecorator):
         if self.nvals == 0 or other.nvals == 0:
             if swap_operands:
                 assert self.shape[0] == other.shape[1]
-                return MatrixToOptimizedAdapter(Matrix(self.dtype, self.shape[1], other.shape[0]))
+                return MatrixToOptimizedAdapter(Matrix(self.dtype, other.shape[0], self.shape[1]))
             assert self.shape[1] == other.shape[0]
             return MatrixToOptimizedAdapter(Matrix(self.dtype, self.shape[0], other.shape[1]))
         return self.base.mxm(other, op, swap_operands)
