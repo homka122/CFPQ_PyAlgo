@@ -1,3 +1,5 @@
+from cfpq_matrix.lazy_add_optimized_matrix import LazyAddOptimizedMatrix
+from coverage.parser import Block
 from cfpq_matrix.empty_optimized_matrix import EmptyOptimizedMatrix
 from cfpq_matrix.format_optimized_matrix import FormatOptimizedMatrix
 from cfpq_matrix.block.block_matrix_space import BlockMatrixSpace
@@ -374,7 +376,8 @@ class OptimizedLabelDecomposedGraph:
                         swap_operands=swap_operands,
                         op=op,
                     )
-                    mxm = self.block_matrix_space.automize_block_operations(mxm)
+                    assert(isinstance(mxm, MatrixToOptimizedAdapter))
+                    mxm = self.block_matrix_space.automize_block_operations(self.matrix_optimizer(mxm.base))
                     accum.iadd_by_symbol(lhs, mxm, op.monoid)
                     continue
                 else:
@@ -395,6 +398,12 @@ class OptimizedLabelDecomposedGraph:
 
     def __getitem__(self, symbol: Symbol) -> OptimizedMatrix:
         if not self.group:
+            if symbol in self:
+                 return self.matrices[symbol]
+            else:
+                base = self.matrix_optimizer(self._create_matrix_for_symbol(symbol))
+                base = self.block_matrix_space.automize_block_operations(base)
+                return base
             return (
                 self.matrices[symbol]
                 if symbol in self

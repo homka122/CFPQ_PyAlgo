@@ -14,7 +14,7 @@ class AlgoSettingsManager:
     @staticmethod
     def create_settings():
         # NOTE: changing order of settings may change the semantics
-        return [IndexExplodingPreProcessorSetting(), OptimizeEmptyMatrixSetting()]
+        return [IndexExplodingPreProcessorSetting(), OptimizeEmptyMatrixSetting(), LazyAddMatrixSetting(), OptimizeFormatMatrixSetting()]
 
     def add_args(self, parser: ArgumentParser):
         for setting in self._settings:

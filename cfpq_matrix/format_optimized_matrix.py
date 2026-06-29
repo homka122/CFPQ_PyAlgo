@@ -51,7 +51,7 @@ class FormatOptimizedMatrix(AbstractOptimizedMatrixDecorator):
         if desired_format in self.matrices or other.nvals < self.nvals / self.reformat_threshold:
             base.ss.config["format"] = desired_format
             reformatted_self = self._force_init_format(desired_format)
-            return reformatted_self.mxm(MatrixToOptimizedAdapter(base), op, swap_operands=swap_operands)
+            return reformatted_self.mxm(other.base.optimize_similarly(MatrixToOptimizedAdapter(base)), op, swap_operands=swap_operands)
         return self.base.mxm(other.base, op, swap_operands=swap_operands)
 
     def rsub(self, other: OptimizedMatrix, op: Callable[["OptimizedMatrix", "OptimizedMatrix"], "OptimizedMatrix"]) -> OptimizedMatrix:
@@ -59,8 +59,9 @@ class FormatOptimizedMatrix(AbstractOptimizedMatrixDecorator):
         return self.matrices.get(other.to_unoptimized().ss.config["format"], self.base).rsub(other.base, op)
 
     def iadd(self, other: OptimizedMatrix, op: Monoid):
+        assert(isinstance(other, FormatOptimizedMatrix))
         for m in self.matrices.values():
-            m.iadd(other, op)
+            m.iadd(other.base, op)
 
     def optimize_similarly(self, other: OptimizedMatrix) -> OptimizedMatrix:
         return FormatOptimizedMatrix(self.base.optimize_similarly(other), reformat_threshold=self.reformat_threshold)
