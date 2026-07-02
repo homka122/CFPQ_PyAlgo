@@ -28,10 +28,9 @@ class EmptyOptimizedMatrix(AbstractOptimizedMatrixDecorator):
         return self.base.mxm(other, op, swap_operands)
 
     def rsub(self, other: OptimizedMatrix, op: Callable[["OptimizedMatrix", "OptimizedMatrix"], "OptimizedMatrix"]) -> OptimizedMatrix:
-        assert(isinstance(other, EmptyOptimizedMatrix))
         if self.nvals == 0 or other.nvals == 0:
-            return other.base
-        return self.base.rsub(other.base, op)
+            return other
+        return self.base.rsub(other, op)
 
     def iadd(self, other: OptimizedMatrix, op: Monoid):
         if other.nvals != 0:

@@ -110,20 +110,30 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
             rows, cols, values, mask = tranform(rows, cols, values, cell_h, cell_w)
         elif orientation == BlockMatrixOrientation.VERTICAL:
             indecies = rows // cell_h
-            rows = rows % cell_h
-            rows, cols, values, mask = tranform(rows, cols, values, cell_h, cell_w)
-            if mask is None:
-                rows = rows + new_cell_shape[0] * indecies
-            else:
-                rows = rows + new_cell_shape[0] * indecies[mask]
+            old_size = len(rows)
+            if old_size != 0:
+                rows = rows % cell_h
+                rows, cols, values, mask = tranform(rows, cols, values, cell_h, cell_w)
+                coef = len(rows)//old_size
+                if coef > 1:
+                    indecies = np.concatenate([indecies] * coef)
+                if mask is None:
+                    rows = rows + new_cell_shape[0] * indecies
+                else:
+                    rows = rows + new_cell_shape[0] * indecies[mask]
         elif orientation == BlockMatrixOrientation.HORIZONTAL:
             indecies = cols // cell_w
-            cols = cols % cell_w
-            rows, cols, values, mask = tranform(rows, cols, values, cell_h, cell_w)
-            if mask is None:
-                cols = cols + new_cell_shape[1] * indecies
-            else:
-                cols = cols + new_cell_shape[1] * indecies[mask]
+            old_size = len(cols)
+            if old_size != 0:
+                cols = cols % cell_w
+                rows, cols, values, mask = tranform(rows, cols, values, cell_h, cell_w)
+                coef = len(rows)//old_size
+                if coef > 1:
+                    indecies = np.concatenate([indecies] * coef)
+                if mask is None:
+                    cols = cols + new_cell_shape[1] * indecies
+                else:
+                    cols = cols + new_cell_shape[1] * indecies[mask]
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
@@ -470,43 +480,26 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
 
     # [1x1] matrix to [nums x nums] diag matrix
     def _to_context_diag_matrix(self) -> BlockMatrix:
-        assert isinstance(self.base, BlockMatrix)
+        input_shape = self._get_inner_shape()
+        assert input_shape == (1, 1)
+        output_shape = (self.context_num, self.context_num)
+        new_cell_shape = (output_shape[0] * self.n, output_shape[1] * self.n)
 
-        cell_h = self.block_space.cell_shape[0]
-        cell_w = self.block_space.cell_shape[1]
-        assert (cell_h == self.n and cell_w == self.n)
-        new_cell_shape = (self.context_num * self.n, self.context_num * self.n)
-        is_cell = self.block_space.is_single_cell(self.shape)
+        def transform(rows, cols, values, cell_h, cell_w):
+            all_rows = []
+            all_cols = []
+            for i in range(self.context_num):
+                all_rows.append(rows + cell_h * i)
+                all_cols.append(cols + cell_w * i)
+            values = [values] * self.context_num
 
-        (rows, cols, values) = self.to_unoptimized().to_coo()
-        if not is_cell:
-            orientation = self.block_space.get_block_matrix_orientation(self.shape)
-            if orientation == BlockMatrixOrientation.VERTICAL:
-                cols = cols + (rows // cell_h * cell_w)
-                rows = rows % cell_h
+            return np.concatenate(all_rows), np.concatenate(all_cols), np.concatenate(values), None
 
-        all_rows = []
-        all_cols = []
-        for i in range(self.context_num):
-            all_rows.append(rows + cell_h * i)
-            all_cols.append(cols + cell_w * i)
-        values = [values] * self.context_num
+        base = self._transform_matrix(new_cell_shape, BlockMatrixOrientation.VERTICAL, transform)
 
-        nrows, ncols = new_cell_shape[0], new_cell_shape[1]
-        if not is_cell:
-            ncols *= self.block_space.block_count
+        base = self.base.optimize_similarly_with_block(base.base, base.block_matrix_space)
+        assert(isinstance(base, BlockMatrix))
 
-        base = Matrix.from_coo(
-            np.concatenate(all_rows),
-            np.concatenate(all_cols),
-            np.concatenate(values),
-            nrows=nrows,
-            ncols=ncols,
-        )
-
-        new_block_matrix = BlockMatrixSpaceImpl(new_cell_shape, self.block_space.block_count)
-        base = self.base.optimize_similarly_with_block(MatrixToOptimizedAdapter(base), new_block_matrix)
-        assert isinstance(base, BlockMatrix)
         return base
 
     def _mxm_rsm(self, other: "PointsToMatrix", op: Semiring, swap_operands: bool = False) -> BlockMatrix:

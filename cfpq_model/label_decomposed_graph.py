@@ -290,6 +290,34 @@ class OptimizedLabelDecomposedGraph:
             group=self.group,
         )
 
+    def without_matrix_optimizations(self) -> "OptimizedLabelDecomposedGraph":
+        result = OptimizedLabelDecomposedGraph(
+            vertex_count=self.vertex_count,
+            block_matrix_space=self.block_matrix_space,
+            matrix_optimizer=MatrixToOptimizedAdapter,
+            dtype=self.dtype,
+            contexts_num=self.contexts_num,
+            depth=self.depth,
+            group=self.group,
+        )
+        result.matrices = {symbol: self._without_matrix_optimizations(matrix) for symbol, matrix in self.matrices.items()}
+        return result
+
+    @staticmethod
+    def _without_matrix_optimizations(matrix: OptimizedMatrix) -> OptimizedMatrix:
+        if isinstance(matrix, PointsToMatrix):
+            base = OptimizedLabelDecomposedGraph._without_matrix_optimizations(matrix.base)
+            assert isinstance(base, BlockMatrix)
+            result = PointsToMatrix(base, matrix.type, matrix.n, matrix.context_num, matrix.depth)
+            if matrix.reduced is not None:
+                reduced = OptimizedLabelDecomposedGraph._without_matrix_optimizations(matrix.reduced)
+                assert isinstance(reduced, BlockMatrix)
+                result.reduced = reduced
+            return result
+        if isinstance(matrix, BlockMatrix):
+            return matrix.block_matrix_space.automize_block_operations(MatrixToOptimizedAdapter(matrix.to_unoptimized()))
+        return MatrixToOptimizedAdapter(matrix.to_unoptimized())
+
     @property
     def nvals(self) -> int:
         return sum(matrix.nvals for matrix in self.matrices.values())
@@ -340,7 +368,7 @@ class OptimizedLabelDecomposedGraph:
                     base = self.matrices[symbol].rsub(matrix, op)
                 else:
                     base = MatrixToOptimizedAdapter(matrix.to_unoptimized().dup())
-                result.matrices[symbol] = matrix.block_matrix_space.automize_block_operations(self.matrix_optimizer(base.base))
+                result.matrices[symbol] = matrix.block_matrix_space.automize_block_operations(self.matrix_optimizer(base.to_unoptimized().dup()))
             # result.matrices: dict[Symbol, OptimizedMatrix] = {
                 # symbol: (self.block_matrix_space.automize_block_operations(self.matrices[symbol].rsub(matrix, op)) if symbol in self else matrix)
                 # for symbol, matrix in other.matrices.items()

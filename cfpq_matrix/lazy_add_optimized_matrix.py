@@ -65,30 +65,27 @@ class LazyAddOptimizedMatrix(AbstractOptimizedMatrixDecorator):
         return self.base.to_unoptimized()
 
     def mxm(self, other: OptimizedMatrix, op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
-        assert(isinstance(other, LazyAddOptimizedMatrix))
         self.update_monoid(op.monoid)
         return MatrixToOptimizedAdapter(
             self._map_and_fold_mxm(
-                mapper=lambda m: m.mxm(other.base, op=op, swap_operands=swap_operands).to_unoptimized(),
+                mapper=lambda m: m.mxm(other, op=op, swap_operands=swap_operands).to_unoptimized(),
                 combiner=lambda acc, cur: acc.ewise_add(cur, op=op.monoid).new(),
                 nvals_combine_threshold=other.nvals,
             )
         )
 
     def rsub(self, other: OptimizedMatrix, op: Callable[["OptimizedMatrix", "OptimizedMatrix"], "OptimizedMatrix"]) -> OptimizedMatrix:
-        assert(isinstance(other, LazyAddOptimizedMatrix))
         return MatrixToOptimizedAdapter(
             self._map_and_fold_rsub(
                 acc=other.to_unoptimized(),
                 reverse_sort=True,
                 mapper=lambda m: m,
-                combiner=lambda acc, cur: cur.rsub(other.base.optimize_similarly(MatrixToOptimizedAdapter(acc)), op).to_unoptimized(),
+                combiner=lambda acc, cur: cur.rsub(MatrixToOptimizedAdapter(acc), op).to_unoptimized(),
                 nvals_combine_threshold=other.nvals,
             )
         )
 
     def iadd(self, other: OptimizedMatrix, op: Monoid):
-        assert(isinstance(other, LazyAddOptimizedMatrix))
         self.update_monoid(op)
         other_base = other.to_unoptimized().dup()
         if self.format is not None:

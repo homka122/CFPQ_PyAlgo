@@ -42,7 +42,6 @@ class FormatOptimizedMatrix(AbstractOptimizedMatrixDecorator):
         return res
 
     def mxm(self, other: OptimizedMatrix, op: Semiring, swap_operands: bool = False) -> OptimizedMatrix:
-        assert(isinstance(other, FormatOptimizedMatrix))
         left_nvals = other.nvals if swap_operands else self.nvals
         right_nvals = self.nvals if swap_operands else other.nvals
         desired_format = "by_row" if left_nvals < right_nvals else "by_col"
@@ -51,17 +50,15 @@ class FormatOptimizedMatrix(AbstractOptimizedMatrixDecorator):
         if desired_format in self.matrices or other.nvals < self.nvals / self.reformat_threshold:
             base.ss.config["format"] = desired_format
             reformatted_self = self._force_init_format(desired_format)
-            return reformatted_self.mxm(other.base.optimize_similarly(MatrixToOptimizedAdapter(base)), op, swap_operands=swap_operands)
-        return self.base.mxm(other.base, op, swap_operands=swap_operands)
+            return reformatted_self.mxm(MatrixToOptimizedAdapter(base), op, swap_operands=swap_operands)
+        return self.base.mxm(other, op, swap_operands=swap_operands)
 
     def rsub(self, other: OptimizedMatrix, op: Callable[["OptimizedMatrix", "OptimizedMatrix"], "OptimizedMatrix"]) -> OptimizedMatrix:
-        assert(isinstance(other, FormatOptimizedMatrix))
-        return self.matrices.get(other.to_unoptimized().ss.config["format"], self.base).rsub(other.base, op)
+        return self.matrices.get(other.to_unoptimized().ss.config["format"], self.base).rsub(other, op)
 
     def iadd(self, other: OptimizedMatrix, op: Monoid):
-        assert(isinstance(other, FormatOptimizedMatrix))
         for m in self.matrices.values():
-            m.iadd(other.base, op)
+            m.iadd(other, op)
 
     def optimize_similarly(self, other: OptimizedMatrix) -> OptimizedMatrix:
         return FormatOptimizedMatrix(self.base.optimize_similarly(other), reformat_threshold=self.reformat_threshold)
