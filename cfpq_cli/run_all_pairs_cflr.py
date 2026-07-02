@@ -127,6 +127,8 @@ def run_all_pairs_cflr(
     explode_indices=False,
     depth=1,
 ):
+    with open("data.csv", "w") as file:
+        pass
     if trace_graphblas:
         graphblas.ss.burble.enable()
     total_start = time()
@@ -306,8 +308,8 @@ def main(raw_args: List[str]):
     settings_manager.add_args(parser)
     args = parser.parse_args(raw_args)
     if args.homka_all_combinations:
-        for homka_group_automata in [False, True]:
-            for explode_indices in [True, False]:
+        for explode_indices in [False, True]:
+            for homka_group_automata in [True, False]:
                 print(f"Running with settings: homka_group_automata={homka_group_automata}, group_RSM={not explode_indices}")
                 settings_manager = AlgoSettingsManager()
                 args = parser.parse_args(raw_args)
