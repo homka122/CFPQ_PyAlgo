@@ -1,5 +1,4 @@
 from cfpq_matrix.lazy_add_optimized_matrix import LazyAddOptimizedMatrix
-from coverage.parser import Block
 from cfpq_matrix.empty_optimized_matrix import EmptyOptimizedMatrix
 from cfpq_matrix.format_optimized_matrix import FormatOptimizedMatrix
 from cfpq_matrix.block.block_matrix_space import BlockMatrixSpace

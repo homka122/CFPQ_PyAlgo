@@ -1,4 +1,3 @@
-from coverage.parser import Block
 from numba import njit, prange
 import numba as nb
 from cfpq_matrix.block.block_matrix_space_impl import BlockMatrixSpaceImpl
