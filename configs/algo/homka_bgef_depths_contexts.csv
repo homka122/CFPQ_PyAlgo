@@ -1,0 +1,21 @@
+algo_name,algo_settings
+"D1 C1 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 1 --homka-depth 1 --homka-num-fields 1 --disable-lazy-add
+"D1 C2 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 2 --homka-depth 1 --homka-num-fields 1 --disable-lazy-add
+"D1 C3 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 3 --homka-depth 1 --homka-num-fields 1 --disable-lazy-add
+"D1 C5 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 5 --homka-depth 1 --homka-num-fields 1 --disable-lazy-add
+"D1 C10 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 10 --homka-depth 1 --homka-num-fields 1 --disable-lazy-add
+"D2 C1 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 1 --homka-depth 2 --homka-num-fields 1 --disable-lazy-add
+"D2 C2 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 2 --homka-depth 2 --homka-num-fields 1 --disable-lazy-add
+"D2 C3 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 3 --homka-depth 2 --homka-num-fields 1 --disable-lazy-add
+"D2 C5 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 5 --homka-depth 2 --homka-num-fields 1 --disable-lazy-add
+"D2 C10 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 10 --homka-depth 2 --homka-num-fields 1 --disable-lazy-add
+"D3 C1 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 1 --homka-depth 3 --homka-num-fields 1 --disable-lazy-add
+"D3 C2 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 2 --homka-depth 3 --homka-num-fields 1 --disable-lazy-add
+"D3 C3 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 3 --homka-depth 3 --homka-num-fields 1 --disable-lazy-add
+"D3 C5 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 5 --homka-depth 3 --homka-num-fields 1 --disable-lazy-add
+"D3 C10 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 10 --homka-depth 3 --homka-num-fields 1 --disable-lazy-add
+"D4 C1 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 1 --homka-depth 4 --homka-num-fields 1 --disable-lazy-add
+"D4 C2 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 2 --homka-depth 4 --homka-num-fields 1 --disable-lazy-add
+"D4 C3 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 3 --homka-depth 4 --homka-num-fields 1 --disable-lazy-add
+"D4 C5 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 5 --homka-depth 4 --homka-num-fields 1 --disable-lazy-add
+"D4 C10 B1 G1 E1 F1 L0",IncrementalAllPairsCFLReachabilityMatrix --homka-generate-grammar True --homka-num-contexts 10 --homka-depth 4 --homka-num-fields 1 --disable-lazy-add

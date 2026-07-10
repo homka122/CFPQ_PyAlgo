@@ -1,0 +1,9 @@
+graph_path,grammar_path
+data/graphs/explicit/basic.g,grammars/grammar_1_1_1.cnf
+data/graphs/explicit/collections.g,grammars/grammar_1_1_1.cnf
+data/graphs/explicit/com_fasterxml_jackson.g,grammars/grammar_1_1_1.cnf
+data/graphs/explicit/cornerCases.g,grammars/grammar_1_1_1.cnf
+data/graphs/explicit/generalJava.g,grammars/grammar_1_1_1.cnf
+data/graphs/explicit/org_apache_jackrabbit.g,grammars/grammar_1_1_1.cnf
+data/graphs/explicit/org_jivesoftware_openfire.g,grammars/grammar_1_1_1.cnf
+data/graphs/explicit/reactor.g,grammars/grammar_1_1_1.cnf
