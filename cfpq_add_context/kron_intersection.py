@@ -920,24 +920,22 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
         automata_matrices.append(Matrix.from_edgelist(automata_graph[label], dtype=BOOL, nrows=automata_n, ncols=automata_n, name=f"automata_{label}"))
         rsm_matrices.append(Matrix.from_edgelist(rsm_graph[label], dtype=BOOL, nrows=rsm_n, ncols=rsm_n, name=f"rsm_{label}"))
 
-    box_file = open(f"graphs/boxes_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.dot", "w")
-    file = open(f"graphs/graph_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.dot", "w")
-    cfg_file = open(f"grammars/grammar_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.cnf", mode="w")
+    if write:
+        box_file = open(f"graphs/boxes_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.dot", "w")
+        file = open(f"graphs/graph_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.dot", "w")
+        cfg_file = open(f"grammars/grammar_{AUTOMATA_CONTEXT_NUM}_{AUTOMATA_DEPTH}_{RSM_FIELDS_NUM}.cnf", mode="w")
 
     def w(text):
-        if not write:
-            return
-        print(text, file=file)
+        if write:
+            print(text, file=file)
 
     def w_cfg(text):
-        if not write:
-            return
-        print(text, file=cfg_file)
+        if write:
+            print(text, file=cfg_file)
 
     def w_box(text):
-        if not write:
-            return
-        print(text, file=box_file)
+        if write:
+            print(text, file=box_file)
 
     if write:
         w("digraph g {")
