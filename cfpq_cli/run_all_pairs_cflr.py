@@ -215,6 +215,9 @@ def run_all_pairs_cflr(
     graph, grammar = preprocess_graph_and_grammar(graph, grammar, settings)
 
     if need_save:
+        grammar_dir = os.path.dirname(grammar_path)
+        if grammar_dir:
+            os.makedirs(grammar_dir, exist_ok=True)
         grammar.write_to_pocr_cnf_file(grammar_path, include_starting=True)
     print(f"Grammar size: {len(grammar.complex_rules)}", flush=True)
     try:
