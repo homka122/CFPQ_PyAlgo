@@ -1020,8 +1020,10 @@ def generate_intersection_cfg(AUTOMATA_CONTEXT_NUM, AUTOMATA_DEPTH, RSM_FIELDS_N
     for state in final_state:
         cfg.add_epsilon_rule(state)
 
-    file.close()
-    box_file.close()
+    if write:
+        file.close()
+        box_file.close()
+        cfg_file.close()
 
     return cfg
 
