@@ -1,5 +1,4 @@
 from numpy import number
-from click.core import batch
 import graphblas
 
 from graphblas.core.matrix import Matrix

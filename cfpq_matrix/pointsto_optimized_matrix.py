@@ -5,7 +5,6 @@ from numpy import block
 from cfpq_model.cnf_grammar_template import Symbol
 from networkx.drawing.nx_agraph import from_agraph
 import test
-from packaging.utils import _
 from typing import Literal, Callable
 from abc import ABC
 
