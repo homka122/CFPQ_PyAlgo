@@ -399,20 +399,21 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
                 rows = rows + (cols // cell_w * cell_h)
                 cols = cols % cell_w
 
-        rows = [rows] * count
+        rows = np.concatenate([rows] * count)
         all_cols = []
         for i in range(count):
             all_cols.append(cols + cell_w * i)
-        values = [values] * count
+        all_cols = np.concatenate(all_cols)
+        values = np.concatenate([values] * count)
 
         nrows, ncols = new_cell_shape[0], new_cell_shape[1]
         if not is_cell:
             nrows *= self.block_space.block_count
 
         base = Matrix.from_coo(
-            np.concatenate(rows),
-            np.concatenate(all_cols),
-            np.concatenate(values),
+            rows,
+            all_cols,
+            values,
             nrows=nrows,
             ncols=ncols,
         )
@@ -583,7 +584,7 @@ class PointsToMatrix(AbstractOptimizedMatrixDecorator, ABC):
         left, right = (self, other) if not swap_operands else (other, self)
         left_block, right_block = (left.base, right.base)
 
-        if left.nvals <= right.nvals:
+        if left.nvals * 100 <= right.nvals:
             if right._is_grouped():
                 shape = right._get_inner_shape()
                 if swap_operands:
